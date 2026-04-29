@@ -1,5 +1,6 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { AlertTriangle, DollarSign, TrendingUp, User, LogOut, RefreshCw } from 'lucide-react';
+import { AlertTriangle, DollarSign, TrendingUp, User, LogOut, RefreshCw, Activity, Radio, BookOpen, BarChart3 } from 'lucide-react';
+import { useWebSocketContext } from '../contexts/WebSocketContext';
 
 // ─────────────────────────────────────────────────────────────
 // TYPES & INTERFACES
@@ -41,6 +42,17 @@ interface Order {
   created_at: string;
 }
 
+interface Market {
+  _id: string;
+  title: string;
+  description: string;
+  status: string;
+  type: 'threshold' | 'bucket';
+  trading_starts_at: string;
+  trading_ends_at: string;
+  outcomes?: Array<{ _id: string; title: string; slug: string }>;
+}
+
 // ─────────────────────────────────────────────────────────────
 // AUTH CONTEXT
 // ─────────────────────────────────────────────────────────────
@@ -64,7 +76,7 @@ export const useAuth = () => {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(() => 
+  const [token, setToken] = useState<string | null>(() =>
     localStorage.getItem('auth_token')
   );
   const [isLoading, setIsLoading] = useState(true);
@@ -82,9 +94,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             throw new Error('Invalid response');
           }
         })
-        .catch(() => { 
-          setToken(null); 
-          localStorage.removeItem('auth_token'); 
+        .catch(() => {
+          setToken(null);
+          localStorage.removeItem('auth_token');
         })
         .finally(() => setIsLoading(false));
     } else {
@@ -173,14 +185,14 @@ export const AuthForm: React.FC = () => {
             {mode === 'login' ? 'Welcome back' : 'Create your account'}
           </p>
         </div>
-        
+
         {error && (
           <div className="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-lg flex items-center gap-3 text-red-200">
             <AlertTriangle className="w-5 h-5 flex-shrink-0" />
             <span className="text-sm">{error}</span>
           </div>
         )}
-        
+
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">Email</label>
@@ -193,7 +205,7 @@ export const AuthForm: React.FC = () => {
               required
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">Password</label>
             <input
@@ -206,7 +218,7 @@ export const AuthForm: React.FC = () => {
               required
             />
           </div>
-          
+
           <button
             type="submit"
             disabled={loading}
@@ -222,7 +234,7 @@ export const AuthForm: React.FC = () => {
             )}
           </button>
         </form>
-        
+
         <p className="mt-6 text-center text-sm text-gray-300">
           {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
           <button
@@ -248,7 +260,7 @@ export const BalanceDisplay: React.FC = () => {
 
   useEffect(() => {
     if (!token) return;
-    
+
     fetch('/api/auth/wallet', {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -300,7 +312,7 @@ export const BalanceDisplay: React.FC = () => {
           <div className="text-2xl font-bold">${balance.available.toFixed(2)}</div>
         </div>
       </div>
-      
+
       {balance.locked > 0 && (
         <div className="border-t border-white/20 pt-3 mt-3">
           <div className="text-sm opacity-90">
@@ -308,10 +320,154 @@ export const BalanceDisplay: React.FC = () => {
           </div>
         </div>
       )}
-      
+
       <div className="mt-4 text-xs opacity-75">
         Total: ${balance.total.toFixed(2)} {balance.currency}
       </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
+// COMPONENTS: Live Connection Status
+// ─────────────────────────────────────────────────────────────
+
+const ConnectionStatus: React.FC = () => {
+  const { connected } = useWebSocketContext();
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 backdrop-blur-md rounded-full border border-white/20">
+      <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
+      <span className="text-xs text-gray-200 font-medium">
+        {connected ? 'Live' : 'Offline'}
+      </span>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
+// COMPONENTS: Live Trade Feed
+// ─────────────────────────────────────────────────────────────
+
+const LiveTradeFeed: React.FC<{ marketId: string }> = ({ marketId }) => {
+  const { trades } = useWebSocketContext();
+  const marketTrades = trades.filter(t => t.market_id === marketId);
+
+  if (marketTrades.length === 0) {
+    return (
+      <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Activity className="w-4 h-4 text-purple-400" />
+          <h3 className="text-sm font-semibold text-white">Live Trades</h3>
+        </div>
+        <p className="text-gray-400 text-xs text-center py-4">Waiting for trades...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Activity className="w-4 h-4 text-purple-400" />
+        <h3 className="text-sm font-semibold text-white">Live Trades</h3>
+        <span className="text-xs text-gray-400 ml-auto">{marketTrades.length} recent</span>
+      </div>
+      <div className="space-y-1.5 max-h-48 overflow-y-auto">
+        {marketTrades.slice(0, 10).map((trade, idx) => (
+          <div key={idx} className="flex items-center justify-between text-xs py-1 border-b border-white/5 last:border-0">
+            <div className="flex items-center gap-2">
+              <span className="text-gray-400">
+                {new Date(trade.timestamp).toLocaleTimeString()}
+              </span>
+              <span className="text-white font-mono">${trade.price.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-gray-300">{trade.quantity} shares</span>
+              <span className="text-emerald-400">@${(trade.price * trade.quantity).toFixed(2)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
+// COMPONENTS: Live Order Book Preview
+// ─────────────────────────────────────────────────────────────
+
+const LiveOrderBookPreview: React.FC<{ marketId: string; outcomeId: string; outcomeTitle: string }> = ({
+  marketId, outcomeId, outcomeTitle
+}) => {
+  const { orderBooks } = useWebSocketContext();
+  const book = orderBooks.get(`${marketId}:${outcomeId}`);
+
+  return (
+    <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <BookOpen className="w-4 h-4 text-blue-400" />
+        <h3 className="text-sm font-semibold text-white">{outcomeTitle} Book</h3>
+      </div>
+      {!book ? (
+        <p className="text-gray-400 text-xs text-center py-4">No orders yet</p>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <div className="text-emerald-400 font-semibold mb-1.5">BIDS</div>
+            <div className="space-y-1">
+              {book.bids.slice(0, 5).map((level, idx) => (
+                <div key={idx} className="flex justify-between font-mono">
+                  <span className="text-white">${level.price.toFixed(2)}</span>
+                  <span className="text-gray-400">{level.size}</span>
+                </div>
+              ))}
+              {book.bids.length === 0 && <span className="text-gray-500">-</span>}
+            </div>
+          </div>
+          <div>
+            <div className="text-red-400 font-semibold mb-1.5">ASKS</div>
+            <div className="space-y-1">
+              {book.asks.slice(0, 5).map((level, idx) => (
+                <div key={idx} className="flex justify-between font-mono">
+                  <span className="text-white">${level.price.toFixed(2)}</span>
+                  <span className="text-gray-400">{level.size}</span>
+                </div>
+              ))}
+              {book.asks.length === 0 && <span className="text-gray-500">-</span>}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
+// COMPONENTS: Market Selector
+// ─────────────────────────────────────────────────────────────
+
+const MarketSelector: React.FC<{
+  markets: Market[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}> = ({ markets, selectedId, onSelect }) => {
+  return (
+    <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <BarChart3 className="w-4 h-4 text-purple-400" />
+        <h3 className="text-sm font-semibold text-white">Select Market</h3>
+      </div>
+      <select
+        value={selectedId || ''}
+        onChange={e => onSelect(e.target.value)}
+        className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+      >
+        {markets.map(m => (
+          <option key={m._id} value={m._id} className="bg-slate-800">
+            {m.title}
+          </option>
+        ))}
+      </select>
     </div>
   );
 };
@@ -323,9 +479,10 @@ export const BalanceDisplay: React.FC = () => {
 interface OrderFormProps {
   marketId: string;
   marketTitle: string;
+  outcomes?: Array<{ _id: string; title: string; slug: string }>;
 }
 
-export const OrderForm: React.FC<OrderFormProps> = ({ marketId, marketTitle }) => {
+export const OrderForm: React.FC<OrderFormProps> = ({ marketId, marketTitle, outcomes }) => {
   const { token } = useAuth();
   const [outcome, setOutcome] = useState<'yes' | 'no'>('yes');
   const [price, setPrice] = useState(0.50);
@@ -363,7 +520,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({ marketId, marketTitle }) =
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Order failed');
       }
-      
+
       setSuccess(`Order placed! ID: ${data.order.id.slice(0, 8)}...`);
       setQuantity(10);
     } catch (err: any) {
@@ -384,20 +541,20 @@ export const OrderForm: React.FC<OrderFormProps> = ({ marketId, marketTitle }) =
           <p className="text-sm text-gray-600">{marketTitle}</p>
         </div>
       </div>
-      
+
       {error && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 flex-shrink-0" />
           {error}
         </div>
       )}
-      
+
       {success && (
         <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
           {success}
         </div>
       )}
-      
+
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Outcome Selection */}
         <div>
@@ -518,7 +675,7 @@ export const OrdersList: React.FC = () => {
 
   useEffect(() => {
     if (!token) return;
-    
+
     fetch('/api/auth/orders', {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -558,7 +715,7 @@ export const OrdersList: React.FC = () => {
   return (
     <div className="bg-white rounded-xl shadow-lg p-6">
       <h3 className="font-bold text-gray-900 mb-4">Your Orders</h3>
-      
+
       {orders.length === 0 ? (
         <p className="text-gray-500 text-center py-8">No orders yet</p>
       ) : (
@@ -599,6 +756,48 @@ export const OrdersList: React.FC = () => {
 
 export const TradingDashboard: React.FC = () => {
   const { user, logout, isLoading } = useAuth();
+  const { connected, subscribeMarket, unsubscribeMarket, subscribeOrderBook, marketStatuses } = useWebSocketContext();
+  const [markets, setMarkets] = useState<Market[]>([]);
+  const [selectedMarketId, setSelectedMarketId] = useState<string | null>(null);
+  const [marketsLoading, setMarketsLoading] = useState(true);
+
+  // Fetch real markets from API
+  useEffect(() => {
+    fetch('/api/markets?status=trading,published')
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          const list = data.data || [];
+          setMarkets(list);
+          if (list.length > 0 && !selectedMarketId) {
+            setSelectedMarketId(list[0]._id);
+          }
+        }
+      })
+      .catch(console.error)
+      .finally(() => setMarketsLoading(false));
+  }, []);
+
+  // Subscribe to WebSocket for selected market
+  useEffect(() => {
+    if (!selectedMarketId) return;
+
+    subscribeMarket(selectedMarketId);
+
+    const market = markets.find(m => m._id === selectedMarketId);
+    if (market?.outcomes) {
+      market.outcomes.forEach(o => {
+        subscribeOrderBook(selectedMarketId, o._id);
+      });
+    }
+
+    return () => {
+      unsubscribeMarket(selectedMarketId);
+    };
+  }, [selectedMarketId, markets, subscribeMarket, unsubscribeMarket, subscribeOrderBook]);
+
+  const selectedMarket = markets.find(m => m._id === selectedMarketId);
+  const currentStatus = marketStatuses.get(selectedMarketId || '')?.new_status || selectedMarket?.status;
 
   if (isLoading) {
     return (
@@ -627,8 +826,9 @@ export const TradingDashboard: React.FC = () => {
               </div>
               <h1 className="text-xl font-bold text-white">Prediction Market</h1>
             </div>
-            
+
             <div className="flex items-center gap-4">
+              <ConnectionStatus />
               <div className="flex items-center gap-2 text-white">
                 <User className="w-4 h-4" />
                 <span className="text-sm">{user.username}</span>
@@ -647,30 +847,93 @@ export const TradingDashboard: React.FC = () => {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Left Column: Balance & Orders */}
-          <div className="space-y-6">
-            <BalanceDisplay />
-            <OrdersList />
+        {marketsLoading ? (
+          <div className="text-center text-white py-12">
+            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3" />
+            Loading markets...
           </div>
+        ) : markets.length === 0 ? (
+          <div className="text-center text-white py-12">
+            <AlertTriangle className="w-8 h-8 mx-auto mb-3 text-yellow-400" />
+            <p>No active markets available.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Left Column: Balance, Market Selector, Orders, Live Feed */}
+            <div className="space-y-6">
+              <BalanceDisplay />
+              <MarketSelector
+                markets={markets}
+                selectedId={selectedMarketId}
+                onSelect={setSelectedMarketId}
+              />
+              <OrdersList />
+              {selectedMarketId && <LiveTradeFeed marketId={selectedMarketId} />}
+            </div>
 
-          {/* Right Column: Trading Form */}
-          <div className="lg:col-span-2">
-            <OrderForm
-              marketId="demo-market-1"
-              marketTitle="Will this demo market work correctly?"
-            />
+            {/* Right Column: Trading Form & Live Data */}
+            <div className="lg:col-span-2 space-y-6">
+              {selectedMarket && (
+                <>
+                  {/* Market Info Card */}
+                  <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h2 className="text-xl font-bold text-white mb-1">{selectedMarket.title}</h2>
+                        <p className="text-gray-300 text-sm">{selectedMarket.description}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          currentStatus === 'trading' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                          currentStatus === 'published' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' :
+                          currentStatus === 'resolved' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' :
+                          'bg-gray-500/20 text-gray-300 border border-gray-500/30'
+                        }`}>
+                          {currentStatus?.toUpperCase()}
+                        </span>
+                        {connected && (
+                          <Radio className="w-4 h-4 text-green-400 animate-pulse" />
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-gray-400">
+                      <span>Type: {selectedMarket.type}</span>
+                      <span>•</span>
+                      <span>Trading ends: {new Date(selectedMarket.trading_ends_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+
+                  {/* Order Form */}
+                  <OrderForm
+                    marketId={selectedMarket._id}
+                    marketTitle={selectedMarket.title}
+                    outcomes={selectedMarket.outcomes}
+                  />
+
+                  {/* Live Order Book Previews */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {selectedMarket.outcomes?.map(outcome => (
+                      <LiveOrderBookPreview
+                        key={outcome._id}
+                        marketId={selectedMarket._id}
+                        outcomeId={outcome._id}
+                        outcomeTitle={outcome.title}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
-        </div>
-        
+        )}
+
         {/* Demo Notice */}
         <div className="mt-8 bg-blue-500/20 border border-blue-500/30 rounded-lg p-4">
           <div className="flex items-start gap-3">
             <AlertTriangle className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
             <div className="text-blue-200 text-sm">
-              <p className="font-medium mb-1">Demo Mode</p>
-              <p>You're using the prediction market with demo data. All orders are simulated and use virtual USDC. This is Phase 1 of Sprint 3 implementation.</p>
+              <p className="font-medium mb-1">Real-time Market Data</p>
+              <p>You're connected to live WebSocket feeds. Order book, trade executions, and market status updates stream in real-time. This is tasks 4.15–4.19 implementation.</p>
             </div>
           </div>
         </div>

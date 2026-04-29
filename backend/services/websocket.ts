@@ -1,5 +1,6 @@
 import { Server } from 'socket.io';
 import { Server as HttpServer } from 'http';
+import jwt from 'jsonwebtoken';
 import { get_redis, cache_service, is_redis_available } from './redis.js';
 import { ObjectId } from 'mongodb';
 import { Logger } from '../utils/logger.js';
@@ -14,7 +15,7 @@ export interface SocketUser {
 export interface MarketUpdate {
   market_id: string;
   outcome_id?: string;
-  type: 'price_update' | 'trade_executed' | 'order_placed' | 'market_status_change';
+  type: 'price_update' | 'trade_executed' | 'order_placed' | 'order_cancelled' | 'matching_complete' | 'market_status_change';
   data: any;
   timestamp: number;
 }
@@ -54,8 +55,15 @@ export class WebSocketService {
       // Handle user authentication
       socket.on('authenticate', async (data: { user_id: string; auth_token: string }) => {
         try {
-          // TODO: Verify auth token with database
-          const { user_id } = data;
+          const jwt_secret = process.env.JWT_TOKEN || 'secret';
+          const decoded = jwt.verify(data.auth_token, jwt_secret) as any;
+          const user_id = decoded.userId || data.user_id;
+
+          // Verify the provided user_id matches the token if both are present
+          if (data.user_id && decoded.userId && data.user_id !== decoded.userId) {
+            socket.emit('authenticated', { success: false, error: 'Token mismatch' });
+            return;
+          }
 
           // Update user data with authenticated user ID
           const current_user = this.connected_users.get(socket.id);
@@ -67,7 +75,7 @@ export class WebSocketService {
           socket.emit('authenticated', { success: true, user_id });
           this.logger.debug(`👤 User ${user_id} authenticated via WebSocket`);
         } catch (error) {
-          socket.emit('authenticated', { success: false, error: 'Authentication failed' });
+          socket.emit('authenticated', { success: false, error: 'Invalid token' });
         }
       });
 

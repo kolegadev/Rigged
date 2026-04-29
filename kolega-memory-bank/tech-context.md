@@ -9,7 +9,7 @@
 - **UI Components**: shadcn/ui + Radix UI primitives
 - **Database**: MongoDB (via mongodb driver 6.12.0)
 - **Cache / PubSub**: Redis via ioredis 5.x (with in-memory fallback)
-- **Real-time**: Socket.IO 4.x
+- **Real-time**: Socket.IO 4.x (backend) + socket.io-client 4.x (frontend)
 - **Authentication**: bcryptjs + jsonwebtoken
 - **Validation**: Zod
 
@@ -63,9 +63,14 @@ cd backend && npm run start     # Run compiled output
 - `GET /api/health/websocket` - WebSocket connection statistics
 
 ### WebSocket Events (Socket.IO)
-- `authenticate` - Authenticate socket with user token
+- `authenticate` - Authenticate socket with JWT token (verified against `JWT_TOKEN` secret)
 - `subscribe_market` - Subscribe to market updates
 - `unsubscribe_market` - Unsubscribe from market updates
 - `subscribe_orderbook` - Subscribe to order book updates
 - `ping` / `pong` - Connection health check
-- Server emits: `market_update`, `trade_executed`, `orderbook_update`, `order_filled`
+- Server emits: `market_update`, `trade_executed`, `orderbook_update`, `order_filled`, `order_placed`, `order_cancelled`
+
+### Frontend WebSocket Integration
+- **Context**: `frontend/src/contexts/WebSocketContext.tsx` — React context managing socket connection, subscriptions, and reactive data stores
+- **Hook**: `frontend/src/hooks/useWebSocket.ts` — Lower-level hook for direct socket access
+- **Features**: Auto-reconnection, JWT auth, live trade feed, order book streaming, market status updates

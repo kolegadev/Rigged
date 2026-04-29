@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import { get_database } from '../database/connection.js';
 import { Auction, Event, Market, Outcome, COLLECTIONS } from '../database/schemas.js';
 import { reconciliation_service } from '../services/reconciliation.js';
+import { broadcast_market_status_change } from '../services/market_status.js';
 
 export const create_admin_routes = (): Hono => {
   const router = new Hono();
@@ -302,6 +303,15 @@ export const create_admin_routes = (): Hono => {
         }, 404);
       }
 
+      // Broadcast status change (task 4.19)
+      await broadcast_market_status_change({
+        market_id: market_id,
+        previous_status: 'draft',
+        new_status: 'published',
+        timestamp: new Date(),
+        reason: 'admin_publish'
+      });
+
       return c.json({
         success: true,
         message: 'Market published successfully'
@@ -346,6 +356,15 @@ export const create_admin_routes = (): Hono => {
           error: 'Market not found or not in published status'
         }, 404);
       }
+
+      // Broadcast status change (task 4.19)
+      await broadcast_market_status_change({
+        market_id: market_id,
+        previous_status: 'published',
+        new_status: 'draft',
+        timestamp: new Date(),
+        reason: 'admin_unpublish'
+      });
 
       return c.json({
         success: true,

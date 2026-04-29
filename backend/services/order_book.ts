@@ -196,6 +196,22 @@ export const create_order_book_service = () => {
       try {
         const ws = get_websocket_service();
         await ws.notify_orderbook_update(market_id, outcome_id, snapshot);
+
+        // Also broadcast a market update with BBO for price tickers (task 4.16)
+        await ws.notify_market_update(market_id, {
+          market_id,
+          type: 'price_update',
+          data: {
+            best_bid: order_book.best_bid,
+            best_ask: order_book.best_ask,
+            spread: order_book.spread,
+            mid_price: order_book.best_bid && order_book.best_ask
+              ? (order_book.best_bid + order_book.best_ask) / 2
+              : null,
+            outcome_id
+          },
+          timestamp: Date.now()
+        });
       } catch {
         // WebSocket service may not be initialized in tests
       }

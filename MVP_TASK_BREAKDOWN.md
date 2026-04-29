@@ -258,11 +258,11 @@ This document outlines all components needed to build the MVP for a Polygon-base
 - [x] 4.14 Add rate limiting infrastructure
 
 ### Real-time Market Data
-- [ ] 4.15 Create websocket server
-- [ ] 4.16 Implement market data broadcasting
-- [ ] 4.17 Build order book update streams
-- [ ] 4.18 Add trade feed functionality
-- [ ] 4.19 Create market status updates
+- [x] 4.15 Create websocket server *Completed: Socket.IO server attached to HTTP server, frontend socket.io-client integrated with React context*
+- [x] 4.16 Implement market data broadcasting *Completed: BBO updates, order placed/cancelled events, and matching results broadcast via WebSocket and Redis pub/sub*
+- [x] 4.17 Build order book update streams *Completed: Order book snapshots broadcast on every refresh; frontend subscribes and receives real-time order book data*
+- [x] 4.18 Add trade feed functionality *Completed: Trade executions broadcast via `notify_trade_execution`; frontend displays live trade feed*
+- [x] 4.19 Create market status updates *Completed: Auto-transition published→trading and trading→resolved based on time; admin publish/unpublish broadcasts status changes; periodic 30s checker*
 
 ### Trading UI Components
 - [ ] 4.20 Build order book display component

@@ -216,6 +216,27 @@ export const order_service = {
         console.error('Matching engine error (non-critical):', matching_error);
         // Don't fail order placement if matching fails
       }
+
+      // Broadcast order placed event for real-time order book updates (task 4.16)
+      try {
+        const { get_websocket_service } = await import('./websocket.js');
+        const ws = get_websocket_service();
+        await ws.broadcast_to_orderbook(input.market_id, outcome_id, 'order_placed', {
+          order_id: order_id.toString(),
+          side: input.side,
+          price: input.price,
+          quantity: input.quantity,
+          outcome: input.outcome
+        });
+        await ws.notify_market_update(input.market_id, {
+          market_id: input.market_id,
+          type: 'order_placed',
+          data: { side: input.side, price: input.price, quantity: input.quantity, outcome_id },
+          timestamp: Date.now()
+        });
+      } catch {
+        // Non-critical: WebSocket may not be initialized in tests
+      }
       
       return {
         success: true,
@@ -382,6 +403,42 @@ export const order_service = {
       if (!unlock_result.success) {
         console.error(`Failed to unlock funds for cancelled order ${order_id}:`, unlock_result.error);
         // Order is already cancelled, but funds weren't unlocked - needs manual intervention
+      }
+
+      // Broadcast order cancellation and refresh order book (task 4.16)
+      try {
+        const { order_book_service } = await import('./order_book.js');
+        await order_book_service.refresh_order_book(
+          order.market_id.toString(),
+          order.outcome_id.toString()
+        );
+
+        const { get_websocket_service } = await import('./websocket.js');
+        const ws = get_websocket_service();
+        await ws.broadcast_to_orderbook(
+          order.market_id.toString(),
+          order.outcome_id.toString(),
+          'order_cancelled',
+          {
+            order_id,
+            side: order.side,
+            price: order.price,
+            remaining_quantity: order.remaining_quantity
+          }
+        );
+        await ws.notify_market_update(order.market_id.toString(), {
+          market_id: order.market_id.toString(),
+          type: 'order_cancelled',
+          data: {
+            side: order.side,
+            price: order.price,
+            remaining_quantity: order.remaining_quantity,
+            outcome_id: order.outcome_id.toString()
+          },
+          timestamp: Date.now()
+        });
+      } catch {
+        // Non-critical
       }
 
       console.log(`✅ Cancelled order ${order_id} and unlocked $${remaining_cost.toFixed(2)}`);

@@ -175,6 +175,26 @@ export const create_matching_engine = () => {
         orders_partially_filled: result.orders_partially_filled.length
       });
 
+      // Also broadcast directly via WebSocket for redundancy (task 4.16)
+      try {
+        const { get_websocket_service } = await import('./websocket.js');
+        const ws = get_websocket_service();
+        await ws.notify_market_update(market_id, {
+          market_id,
+          type: 'matching_complete',
+          data: {
+            trades_created: result.trades_created,
+            volume_matched: result.volume_matched,
+            orders_filled: result.orders_filled.length,
+            orders_partially_filled: result.orders_partially_filled.length,
+            outcome_id
+          },
+          timestamp: Date.now()
+        });
+      } catch {
+        // WebSocket may not be initialized in tests
+      }
+
       logger.info(`Matching complete: ${result.trades_created} trades, ${result.volume_matched} volume`);
       return result;
 

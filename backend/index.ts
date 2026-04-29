@@ -12,6 +12,7 @@ import { create_trading_routes } from './routes/trading_routes.js';
 import { create_matching_test_routes } from './routes/matching_test.js';
 import { connect_to_redis, cache_service, is_redis_available } from './services/redis.js';
 import { create_websocket_service, get_websocket_service } from './services/websocket.js';
+import { start_market_status_checker, stop_market_status_checker, initialize_status_cache } from './services/market_status.js';
 import { rate_limiters } from './middleware/rate_limit.js';
 
 // Create Hono app
@@ -150,6 +151,23 @@ connect_to_mongodb()
     // Initialize WebSocket service on the same HTTP server
     create_websocket_service(server);
     console.log('🔌 WebSocket server initialized');
+
+    // Initialize market status cache and start periodic checker (task 4.19)
+    await initialize_status_cache();
+    start_market_status_checker(30000);
+
+    // Graceful shutdown handlers
+    process.on('SIGTERM', () => {
+      console.log('SIGTERM received, shutting down gracefully');
+      stop_market_status_checker();
+      process.exit(0);
+    });
+
+    process.on('SIGINT', () => {
+      console.log('SIGINT received, shutting down gracefully');
+      stop_market_status_checker();
+      process.exit(0);
+    });
 
     console.log(`🚀 Car Auction Prediction Marketplace API running on http://localhost:${port}`);
     console.log(`📊 API endpoints available at:`);
