@@ -5,6 +5,7 @@ import { trade_execution_service } from '../services/trade_execution.js';
 import { position_engine } from '../services/position_engine.js';
 import { reconciliation_service } from '../services/reconciliation.js';
 import { get_user_from_request } from '../middleware/auth.js';
+import { rate_limiters } from '../middleware/rate_limit.js';
 import { Logger } from '../utils/logger.js';
 
 export const create_trading_routes = (): Hono => {
@@ -15,7 +16,7 @@ export const create_trading_routes = (): Hono => {
    * GET /api/trading/orderbook/:market_id/:outcome_id
    * Get order book for a specific market/outcome
    */
-  router.get('/orderbook/:market_id/:outcome_id', async (c) => {
+  router.get('/orderbook/:market_id/:outcome_id', rate_limiters.market_data, async (c) => {
     try {
       const market_id = c.req.param('market_id');
       const outcome_id = c.req.param('outcome_id');
@@ -39,7 +40,7 @@ export const create_trading_routes = (): Hono => {
    * GET /api/trading/orderbook/:market_id
    * Get all order books for a market (all outcomes)
    */
-  router.get('/orderbook/:market_id', async (c) => {
+  router.get('/orderbook/:market_id', rate_limiters.market_data, async (c) => {
     try {
       const market_id = c.req.param('market_id');
       const order_books = await order_book_service.get_market_order_books(market_id);
@@ -61,7 +62,7 @@ export const create_trading_routes = (): Hono => {
    * GET /api/trading/depth/:market_id/:outcome_id
    * Get market depth for a specific outcome
    */
-  router.get('/depth/:market_id/:outcome_id', async (c) => {
+  router.get('/depth/:market_id/:outcome_id', rate_limiters.market_data, async (c) => {
     try {
       const market_id = c.req.param('market_id');
       const outcome_id = c.req.param('outcome_id');
@@ -86,7 +87,7 @@ export const create_trading_routes = (): Hono => {
    * GET /api/trading/bbo/:market_id/:outcome_id
    * Get best bid/offer for quick price reference
    */
-  router.get('/bbo/:market_id/:outcome_id', async (c) => {
+  router.get('/bbo/:market_id/:outcome_id', rate_limiters.market_data, async (c) => {
     try {
       const market_id = c.req.param('market_id');
       const outcome_id = c.req.param('outcome_id');
@@ -110,7 +111,7 @@ export const create_trading_routes = (): Hono => {
    * GET /api/trading/trades/:market_id
    * Get recent trades for a market
    */
-  router.get('/trades/:market_id', async (c) => {
+  router.get('/trades/:market_id', rate_limiters.market_data, async (c) => {
     try {
       const market_id = c.req.param('market_id');
       const outcome_id = c.req.query('outcome_id');
@@ -135,7 +136,7 @@ export const create_trading_routes = (): Hono => {
    * GET /api/trading/recent-trades/:market_id/:outcome_id
    * Get recent trades formatted for real-time display
    */
-  router.get('/recent-trades/:market_id/:outcome_id', async (c) => {
+  router.get('/recent-trades/:market_id/:outcome_id', rate_limiters.market_data, async (c) => {
     try {
       const market_id = c.req.param('market_id');
       const outcome_id = c.req.param('outcome_id');
@@ -160,7 +161,7 @@ export const create_trading_routes = (): Hono => {
    * GET /api/trading/statistics/:market_id
    * Get trade statistics for a market
    */
-  router.get('/statistics/:market_id', async (c) => {
+  router.get('/statistics/:market_id', rate_limiters.market_data, async (c) => {
     try {
       const market_id = c.req.param('market_id');
       const outcome_id = c.req.query('outcome_id');
@@ -269,7 +270,7 @@ export const create_trading_routes = (): Hono => {
    * POST /api/trading/trigger-matching/:market_id/:outcome_id
    * Manually trigger matching for a market/outcome (admin only)
    */
-  router.post('/trigger-matching/:market_id/:outcome_id', async (c) => {
+  router.post('/trigger-matching/:market_id/:outcome_id', rate_limiters.admin_trigger, async (c) => {
     try {
       // TODO: Add admin authentication check here
       
@@ -295,7 +296,7 @@ export const create_trading_routes = (): Hono => {
    * POST /api/trading/trigger-all-matching
    * Trigger matching for all active markets (admin only)
    */
-  router.post('/trigger-all-matching', async (c) => {
+  router.post('/trigger-all-matching', rate_limiters.admin_trigger, async (c) => {
     try {
       // TODO: Add admin authentication check here
       
@@ -345,7 +346,7 @@ export const create_trading_routes = (): Hono => {
    * GET /api/trading/market-stats/:market_id
    * Get position statistics for a market
    */
-  router.get('/market-stats/:market_id', async (c) => {
+  router.get('/market-stats/:market_id', rate_limiters.market_data, async (c) => {
     try {
       const market_id = c.req.param('market_id');
       const stats = await position_engine.get_market_position_stats(market_id);

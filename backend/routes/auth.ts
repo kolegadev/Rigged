@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { auth_service } from '../services/auth.js';
 import { balance_service } from '../services/balance.js';
 import { order_service } from '../services/orders.js';
+import { rate_limiters } from '../middleware/rate_limit.js';
 
 export function create_auth_routes(): Hono {
   const app = new Hono();
@@ -12,14 +13,14 @@ export function create_auth_routes(): Hono {
 
   const get_user_from_request = (c: any): string | null => {
     const auth_header = c.req.header('Authorization');
-    
+
     if (!auth_header?.startsWith('Bearer ')) {
       return null;
     }
 
     const token = auth_header.slice(7);
     const payload = auth_service.verify_token(token);
-    
+
     return payload ? payload.userId : null;
   };
 
@@ -31,15 +32,15 @@ export function create_auth_routes(): Hono {
    * POST /api/auth/register
    * Register a new user account
    */
-  app.post('/register', async (c) => {
+  app.post('/register', rate_limiters.auth, async (c) => {
     try {
       const body = await c.req.json();
-      
+
       // Basic validation
       if (!body.email || !body.password) {
-        return c.json({ 
-          success: false, 
-          error: 'Email and password required' 
+        return c.json({
+          success: false,
+          error: 'Email and password required'
         }, 400);
       }
 
@@ -48,11 +49,11 @@ export function create_auth_routes(): Hono {
         password: body.password,
         displayName: body.displayName
       });
-      
+
       if (!result.success) {
-        return c.json({ 
-          success: false, 
-          error: result.error 
+        return c.json({
+          success: false,
+          error: result.error
         }, 400);
       }
 
@@ -65,9 +66,9 @@ export function create_auth_routes(): Hono {
 
     } catch (error: any) {
       console.error('Registration endpoint error:', error);
-      return c.json({ 
-        success: false, 
-        error: 'Registration failed' 
+      return c.json({
+        success: false,
+        error: 'Registration failed'
       }, 500);
     }
   });
@@ -76,14 +77,14 @@ export function create_auth_routes(): Hono {
    * POST /api/auth/login
    * Login with email and password
    */
-  app.post('/login', async (c) => {
+  app.post('/login', rate_limiters.auth, async (c) => {
     try {
       const body = await c.req.json();
-      
+
       if (!body.email || !body.password) {
-        return c.json({ 
-          success: false, 
-          error: 'Email and password required' 
+        return c.json({
+          success: false,
+          error: 'Email and password required'
         }, 400);
       }
 
@@ -91,11 +92,11 @@ export function create_auth_routes(): Hono {
         email: body.email,
         password: body.password
       });
-      
+
       if (!result.success) {
-        return c.json({ 
-          success: false, 
-          error: result.error 
+        return c.json({
+          success: false,
+          error: result.error
         }, 401);
       }
 
@@ -108,9 +109,9 @@ export function create_auth_routes(): Hono {
 
     } catch (error: any) {
       console.error('Login endpoint error:', error);
-      return c.json({ 
-        success: false, 
-        error: 'Login failed' 
+      return c.json({
+        success: false,
+        error: 'Login failed'
       }, 500);
     }
   });
@@ -127,18 +128,18 @@ export function create_auth_routes(): Hono {
     try {
       const user_id = get_user_from_request(c);
       if (!user_id) {
-        return c.json({ 
-          success: false, 
-          error: 'Authorization required' 
+        return c.json({
+          success: false,
+          error: 'Authorization required'
         }, 401);
       }
 
       const user = await auth_service.get_user_by_id(user_id);
-      
+
       if (!user) {
-        return c.json({ 
-          success: false, 
-          error: 'User not found' 
+        return c.json({
+          success: false,
+          error: 'User not found'
         }, 404);
       }
 
@@ -149,9 +150,9 @@ export function create_auth_routes(): Hono {
 
     } catch (error: any) {
       console.error('Get user endpoint error:', error);
-      return c.json({ 
-        success: false, 
-        error: 'Failed to get user information' 
+      return c.json({
+        success: false,
+        error: 'Failed to get user information'
       }, 500);
     }
   });
@@ -164,18 +165,18 @@ export function create_auth_routes(): Hono {
     try {
       const user_id = get_user_from_request(c);
       if (!user_id) {
-        return c.json({ 
-          success: false, 
-          error: 'Authorization required' 
+        return c.json({
+          success: false,
+          error: 'Authorization required'
         }, 401);
       }
 
       const wallet = await balance_service.get_user_wallet(user_id);
-      
+
       if (!wallet) {
-        return c.json({ 
-          success: false, 
-          error: 'Wallet not found' 
+        return c.json({
+          success: false,
+          error: 'Wallet not found'
         }, 404);
       }
 
@@ -186,9 +187,9 @@ export function create_auth_routes(): Hono {
 
     } catch (error: any) {
       console.error('Get wallet endpoint error:', error);
-      return c.json({ 
-        success: false, 
-        error: 'Failed to get wallet information' 
+      return c.json({
+        success: false,
+        error: 'Failed to get wallet information'
       }, 500);
     }
   });
@@ -201,14 +202,14 @@ export function create_auth_routes(): Hono {
     try {
       const user_id = get_user_from_request(c);
       if (!user_id) {
-        return c.json({ 
-          success: false, 
-          error: 'Authorization required' 
+        return c.json({
+          success: false,
+          error: 'Authorization required'
         }, 401);
       }
 
       const summary = await balance_service.get_balance_summary(user_id);
-      
+
       return c.json({
         success: true,
         ...summary
@@ -216,9 +217,9 @@ export function create_auth_routes(): Hono {
 
     } catch (error: any) {
       console.error('Get balance endpoint error:', error);
-      return c.json({ 
-        success: false, 
-        error: 'Failed to get balance information' 
+      return c.json({
+        success: false,
+        error: 'Failed to get balance information'
       }, 500);
     }
   });
@@ -231,18 +232,18 @@ export function create_auth_routes(): Hono {
    * POST /api/auth/orders
    * Place a new order
    */
-  app.post('/orders', async (c) => {
+  app.post('/orders', rate_limiters.order_placement, async (c) => {
     try {
       const user_id = get_user_from_request(c);
       if (!user_id) {
-        return c.json({ 
-          success: false, 
-          error: 'Authorization required' 
+        return c.json({
+          success: false,
+          error: 'Authorization required'
         }, 401);
       }
 
       const body = await c.req.json();
-      
+
       // Validate required fields
       if (!body.market_id || !body.outcome || !body.side || !body.price || !body.quantity) {
         return c.json({
@@ -292,9 +293,9 @@ export function create_auth_routes(): Hono {
     try {
       const user_id = get_user_from_request(c);
       if (!user_id) {
-        return c.json({ 
-          success: false, 
-          error: 'Authorization required' 
+        return c.json({
+          success: false,
+          error: 'Authorization required'
         }, 401);
       }
 
@@ -337,9 +338,9 @@ export function create_auth_routes(): Hono {
     try {
       const user_id = get_user_from_request(c);
       if (!user_id) {
-        return c.json({ 
-          success: false, 
-          error: 'Authorization required' 
+        return c.json({
+          success: false,
+          error: 'Authorization required'
         }, 401);
       }
 
@@ -375,9 +376,9 @@ export function create_auth_routes(): Hono {
     try {
       const user_id = get_user_from_request(c);
       if (!user_id) {
-        return c.json({ 
-          success: false, 
-          error: 'Authorization required' 
+        return c.json({
+          success: false,
+          error: 'Authorization required'
         }, 401);
       }
 

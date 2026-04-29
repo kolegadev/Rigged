@@ -1,6 +1,6 @@
 import { get_database } from '../database/connection.js';
 import { ObjectId } from 'mongodb';
-import { cache, events } from './simple_stubs.js';
+import { cache_service } from './redis.js';
 import { Logger } from '../utils/logger.js';
 
 export interface OrderBookLevel {
@@ -13,7 +13,7 @@ export interface OrderBook {
   market_id: string;
   outcome_id: string;
   bids: OrderBookLevel[]; // Buy orders, highest price first
-  asks: OrderBookLevel[]; // Sell orders, lowest price first  
+  asks: OrderBookLevel[]; // Sell orders, lowest price first
   best_bid: number | null;
   best_ask: number | null;
   spread: number | null;
@@ -30,7 +30,7 @@ export interface OrderBookSnapshot {
 
 export const create_order_book_service = () => {
   const logger = new Logger('OrderBook');
-  const CACHE_TTL = 60; // Cache order books for 60 seconds
+  const CACHE_TTL = 30; // Cache order books for 30 seconds (Redis task 4.10/4.11)
   const MAX_LEVELS = 10; // Maximum price levels to show in order book
 
   /**
@@ -41,7 +41,7 @@ export const create_order_book_service = () => {
     logger.debug(`Building order book for market ${market_id}, outcome ${outcome_id}`);
 
     const db = get_database();
-    
+
     // Aggregate buy orders by price level
     const buy_levels = await db.collection('orders').aggregate([
       {
@@ -131,17 +131,15 @@ export const create_order_book_service = () => {
   };
 
   /**
-   * Get order book from cache or build fresh
+   * Get order book from Redis cache or build fresh
    */
   const get_order_book = async (market_id: string, outcome_id: string): Promise<OrderBook> => {
-    const cache_key = `order_book:${market_id}:${outcome_id}`;
-
     try {
-      // Try to get from Redis cache first
-      const cached = await cache.get(cache_key);
+      // Try to get from Redis cache first (task 4.10/4.11)
+      const cached = await cache_service.get_cached_order_book(market_id, outcome_id);
       if (cached) {
-        logger.debug(`Order book cache hit for ${cache_key}`);
-        return JSON.parse(cached);
+        logger.debug(`Order book cache hit for ${market_id}:${outcome_id}`);
+        return cached;
       }
     } catch (error) {
       logger.warn(`Redis cache error: ${error}`);
@@ -151,9 +149,9 @@ export const create_order_book_service = () => {
     const order_book = await build_order_book(market_id, outcome_id);
 
     try {
-      // Cache the result
-      await cache.set(cache_key, JSON.stringify(order_book), CACHE_TTL);
-      logger.debug(`Cached order book for ${cache_key}`);
+      // Cache the result in Redis
+      await cache_service.cache_order_book(market_id, outcome_id, order_book, CACHE_TTL);
+      logger.debug(`Cached order book for ${market_id}:${outcome_id}`);
     } catch (error) {
       logger.warn(`Failed to cache order book: ${error}`);
     }
@@ -170,13 +168,12 @@ export const create_order_book_service = () => {
 
     try {
       // Clear cache to force rebuild
-      const cache_key = `order_book:${market_id}:${outcome_id}`;
-      await cache.delete(cache_key);
+      await cache_service.delete(`orderbook:${market_id}:${outcome_id}`);
 
       // Build fresh order book
       const order_book = await get_order_book(market_id, outcome_id);
 
-      // Broadcast update via WebSocket
+      // Create snapshot for real-time feeds (task 4.12)
       const snapshot: OrderBookSnapshot = {
         market_id,
         outcome_id,
@@ -191,7 +188,17 @@ export const create_order_book_service = () => {
         timestamp: Date.now()
       };
 
-      events.emit('order_book_update', { market_id, ...snapshot });
+      // Save snapshot and publish update (task 4.11/4.12)
+      await cache_service.save_order_book_snapshot(market_id, outcome_id, snapshot);
+
+      // Publish to real-time feeds via Redis pub/sub
+      const { get_websocket_service } = await import('./websocket.js');
+      try {
+        const ws = get_websocket_service();
+        await ws.notify_orderbook_update(market_id, outcome_id, snapshot);
+      } catch {
+        // WebSocket service may not be initialized in tests
+      }
 
       logger.debug(`Order book refreshed and broadcasted for ${market_id}:${outcome_id}`);
     } catch (error) {
@@ -218,7 +225,7 @@ export const create_order_book_service = () => {
       };
     });
 
-    // Calculate cumulative depths for asks (lowest to highest price)  
+    // Calculate cumulative depths for asks (lowest to highest price)
     let cumulative_ask_quantity = 0;
     const ask_depths = order_book.asks.slice(0, levels).map(level => {
       cumulative_ask_quantity += level.quantity;
@@ -244,9 +251,9 @@ export const create_order_book_service = () => {
     mid_price: number | null;
   }> => {
     const order_book = await get_order_book(market_id, outcome_id);
-    
-    const mid_price = (order_book.best_bid && order_book.best_ask) 
-      ? (order_book.best_bid + order_book.best_ask) / 2 
+
+    const mid_price = (order_book.best_bid && order_book.best_ask)
+      ? (order_book.best_bid + order_book.best_ask) / 2
       : null;
 
     return {
@@ -262,7 +269,7 @@ export const create_order_book_service = () => {
    */
   const get_market_order_books = async (market_id: string): Promise<{ [outcome_id: string]: OrderBook }> => {
     const db = get_database();
-    
+
     // Find all outcomes with active orders for this market
     const active_outcomes = await db.collection('orders').distinct('outcome_id', {
       market_id: new ObjectId(market_id),
@@ -291,14 +298,14 @@ export const create_order_book_service = () => {
     logger.info('Warming order book cache');
 
     const db = get_database();
-    
+
     let markets_to_warm = market_ids;
     if (!markets_to_warm) {
       // Get all markets with active orders
       markets_to_warm = await db.collection('orders').distinct('market_id', {
         status: { $in: ['active', 'partial'] },
         remaining_quantity: { $gt: 0 }
-      }).then(ids => ids.map(id => id.toString()));
+      }).then(ids => ids.map((id: any) => id.toString()));
     }
 
     for (const market_id of markets_to_warm) {
@@ -318,7 +325,7 @@ export const create_order_book_service = () => {
    */
   const cleanup_cache = async (): Promise<void> => {
     logger.info('Cache cleanup not implemented - order book caches will expire naturally');
-    // TODO: Implement Redis SCAN pattern matching when needed
+    // Redis TTL handles automatic expiration
   };
 
   return {

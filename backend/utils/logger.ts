@@ -5,19 +5,19 @@ export class Logger {
     this.prefix = `[${component}]`;
   }
 
-  info(message: string): void {
-    console.log(`${this.prefix} ${message}`);
+  info(message: string, ...args: any[]): void {
+    console.log(`${this.prefix} ${message}`, ...args);
   }
 
-  debug(message: string): void {
-    console.log(`${this.prefix} DEBUG: ${message}`);
+  debug(message: string, ...args: any[]): void {
+    console.log(`${this.prefix} DEBUG: ${message}`, ...args);
   }
 
-  warn(message: string): void {
-    console.warn(`${this.prefix} WARN: ${message}`);
+  warn(message: string, ...args: any[]): void {
+    console.warn(`${this.prefix} WARN: ${message}`, ...args);
   }
 
-  error(message: string): void {
-    console.error(`${this.prefix} ERROR: ${message}`);
+  error(message: string, ...args: any[]): void {
+    console.error(`${this.prefix} ERROR: ${message}`, ...args);
   }
 }

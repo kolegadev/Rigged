@@ -2,6 +2,7 @@ import { get_database } from '../database/connection.js';
 import { ObjectId } from 'mongodb';
 import { create_trade_execution_service } from './trade_execution.js';
 import { create_order_book_service } from './order_book.js';
+import { cache_service } from './redis.js';
 import { Logger } from '../utils/logger.js';
 
 export interface MatchingResult {
@@ -56,7 +57,7 @@ export const create_matching_engine = () => {
    */
   const match_market = async (market_id: string, outcome_id: string): Promise<MatchingResult> => {
     logger.info(`Starting matching for market ${market_id}, outcome ${outcome_id}`);
-    
+
     const result: MatchingResult = {
       trades_created: 0,
       volume_matched: 0,
@@ -94,7 +95,7 @@ export const create_matching_engine = () => {
       const sell_orders = active_orders
         .filter(order => order.side === 'sell')
         .sort((a, b) => {
-          // Price priority: lowest price first for sells  
+          // Price priority: lowest price first for sells
           if (a.price !== b.price) return a.price - b.price;
           // Time priority: earliest first
           return a.created_at.getTime() - b.created_at.getTime();
@@ -164,6 +165,16 @@ export const create_matching_engine = () => {
       // Update order book after matching
       await order_book.refresh_order_book(market_id, outcome_id);
 
+      // Publish matching complete event (task 4.12)
+      await cache_service.publish_market_update(market_id, {
+        type: 'matching_complete',
+        outcome_id,
+        trades_created: result.trades_created,
+        volume_matched: result.volume_matched,
+        orders_filled: result.orders_filled.length,
+        orders_partially_filled: result.orders_partially_filled.length
+      });
+
       logger.info(`Matching complete: ${result.trades_created} trades, ${result.volume_matched} volume`);
       return result;
 
@@ -192,7 +203,7 @@ export const create_matching_engine = () => {
    */
   const match_all_markets = async (): Promise<{ [market_outcome: string]: MatchingResult }> => {
     logger.info('Starting match_all_markets');
-    
+
     const db = get_database();
     const results: { [market_outcome: string]: MatchingResult } = {};
 
@@ -256,7 +267,7 @@ export const create_matching_engine = () => {
     logger.info(`Matching triggered by new order: ${order_id}`);
 
     const db = get_database();
-    
+
     // Get the order that was just placed
     const new_order = await db.collection('orders').findOne({
       _id: new ObjectId(order_id)
@@ -268,7 +279,7 @@ export const create_matching_engine = () => {
 
     // Trigger matching for this market/outcome
     return await match_market(
-      new_order.market_id.toString(), 
+      new_order.market_id.toString(),
       new_order.outcome_id.toString()
     );
   };

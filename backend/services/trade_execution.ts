@@ -2,7 +2,7 @@ import { get_database } from '../database/connection.js';
 import { ObjectId, ClientSession } from 'mongodb';
 import { Trade } from '../database/schemas.js';
 import { balance_service } from './balance.js';
-import { events } from './simple_stubs.js';
+import { cache_service } from './redis.js';
 import { Logger } from '../utils/logger.js';
 
 export interface TradeExecutionRequest {
@@ -54,7 +54,7 @@ export const create_trade_execution_service = () => {
 
     try {
       let trade_id: ObjectId;
-      
+
       // Start transaction for atomicity
       await session.withTransaction(async (session_ctx: ClientSession) => {
         // 1. Create the trade record
@@ -98,7 +98,7 @@ export const create_trade_execution_service = () => {
 
         logger.debug(`Updated buy order ${buy_order._id}: filled=${new_buy_filled}, remaining=${new_buy_remaining}, status=${buy_status}`);
 
-        // 3. Update sell order  
+        // 3. Update sell order
         const new_sell_filled = (sell_order.filled_quantity || 0) + trade_quantity;
         const new_sell_remaining = sell_order.remaining_quantity - trade_quantity;
         const sell_status = new_sell_remaining === 0 ? 'filled' : 'partial';
@@ -200,7 +200,7 @@ export const create_trade_execution_service = () => {
     try {
       // 1. Update positions (outside of main transaction to avoid deadlocks)
       const { position_engine } = await import('./position_engine.js');
-      
+
       await position_engine.update_positions_from_trade(
         {
           user_id: buy_order.user_id,
@@ -221,8 +221,8 @@ export const create_trade_execution_service = () => {
           trade_cost: trade_price * trade_quantity
         }
       );
-      
-      // 2. Broadcast trade execution via WebSocket
+
+      // 2. Broadcast trade execution via Redis pub/sub and WebSocket (task 4.12)
       const trade_event = {
         type: 'trade_executed',
         data: {
@@ -236,21 +236,40 @@ export const create_trade_execution_service = () => {
         }
       };
 
-      events.emit('trade_executed', trade_event.data);
-      events.emit('order_filled', {
-        user_id: buy_order.user_id.toString(),
-        order_id: buy_order._id.toString(),
-        fill_quantity: trade_quantity,
-        fill_price: trade_price,
-        remaining_quantity: buy_order.remaining_quantity - trade_quantity
-      });
-      events.emit('order_filled', {
-        user_id: sell_order.user_id.toString(),
-        order_id: sell_order._id.toString(),
-        fill_quantity: trade_quantity,
-        fill_price: trade_price,
-        remaining_quantity: sell_order.remaining_quantity - trade_quantity
-      });
+      // Publish to Redis for cross-service communication
+      await cache_service.publish_trade_execution(
+        buy_order.market_id.toString(),
+        buy_order.outcome_id.toString(),
+        trade_event.data
+      );
+
+      // Broadcast via WebSocket if available
+      const { get_websocket_service } = await import('./websocket.js');
+      try {
+        const ws = get_websocket_service();
+        await ws.notify_trade_execution(
+          buy_order.market_id.toString(),
+          buy_order.outcome_id.toString(),
+          trade_event.data
+        );
+
+        // Also notify individual users
+        ws.broadcast_to_user(buy_order.user_id.toString(), 'order_filled', {
+          order_id: buy_order._id.toString(),
+          fill_quantity: trade_quantity,
+          fill_price: trade_price,
+          remaining_quantity: buy_order.remaining_quantity - trade_quantity
+        });
+
+        ws.broadcast_to_user(sell_order.user_id.toString(), 'order_filled', {
+          order_id: sell_order._id.toString(),
+          fill_quantity: trade_quantity,
+          fill_price: trade_price,
+          remaining_quantity: sell_order.remaining_quantity - trade_quantity
+        });
+      } catch {
+        // WebSocket service may not be initialized in tests
+      }
 
       logger.debug(`Post-trade operations completed for trade between ${buy_order._id} and ${sell_order._id}`);
 
@@ -315,7 +334,7 @@ export const create_trade_execution_service = () => {
     side: 'buy' | 'sell'; // From the perspective of the price taker
   }[]> => {
     const trades = await get_market_trades(market_id, outcome_id, limit);
-    
+
     return trades.map(trade => ({
       price: trade.price,
       quantity: trade.quantity,
@@ -337,14 +356,14 @@ export const create_trade_execution_service = () => {
   }> => {
     const db = get_database();
     const filter: any = { market_id: new ObjectId(market_id) };
-    
+
     if (outcome_id) {
       filter.outcome_id = new ObjectId(outcome_id);
     }
 
     // Get all trades for statistics
     const trades = await db.collection('trades').find(filter).toArray() as Trade[];
-    
+
     if (trades.length === 0) {
       return {
         total_volume: 0,
@@ -360,7 +379,7 @@ export const create_trade_execution_service = () => {
     const total_volume = trades.reduce((sum, trade) => sum + trade.quantity, 0);
     const prices = trades.map(trade => trade.price);
     const average_price = trades.reduce((sum, trade) => sum + trade.price * trade.quantity, 0) / total_volume;
-    
+
     // 24h volume
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const recent_trades = trades.filter(trade => trade.timestamp > twentyFourHoursAgo);

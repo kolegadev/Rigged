@@ -1,8 +1,8 @@
-// import { Server } from 'socket.io';
-import { Server } from './socketio_stub.js';
+import { Server } from 'socket.io';
 import { Server as HttpServer } from 'http';
-import { get_redis, cache_service } from './redis.js';
+import { get_redis, cache_service, is_redis_available } from './redis.js';
 import { ObjectId } from 'mongodb';
+import { Logger } from '../utils/logger.js';
 
 export interface SocketUser {
   user_id?: string;
@@ -23,11 +23,13 @@ export class WebSocketService {
   private io: Server;
   private connected_users: Map<string, SocketUser> = new Map();
   private redis_subscriber: any = null;
+  private logger: Logger;
 
   constructor(http_server: HttpServer) {
+    this.logger = new Logger('WebSocketService');
     this.io = new Server(http_server, {
       cors: {
-        origin: process.env.FRONTEND_URL || "http://localhost:9001",
+        origin: process.env.FRONTEND_URL || "http://localhost:5173",
         methods: ["GET", "POST"]
       },
       transports: ['websocket', 'polling']
@@ -39,7 +41,7 @@ export class WebSocketService {
 
   private setup_connection_handlers(): void {
     this.io.on('connection', (socket) => {
-      console.log(`🔌 WebSocket connection established: ${socket.id}`);
+      this.logger.debug(`🔌 WebSocket connection established: ${socket.id}`);
 
       // Initialize user data
       const user_data: SocketUser = {
@@ -53,8 +55,8 @@ export class WebSocketService {
       socket.on('authenticate', async (data: { user_id: string; auth_token: string }) => {
         try {
           // TODO: Verify auth token with database
-          const { user_id, auth_token } = data;
-          
+          const { user_id } = data;
+
           // Update user data with authenticated user ID
           const current_user = this.connected_users.get(socket.id);
           if (current_user) {
@@ -63,7 +65,7 @@ export class WebSocketService {
           }
 
           socket.emit('authenticated', { success: true, user_id });
-          console.log(`👤 User ${user_id} authenticated via WebSocket`);
+          this.logger.debug(`👤 User ${user_id} authenticated via WebSocket`);
         } catch (error) {
           socket.emit('authenticated', { success: false, error: 'Authentication failed' });
         }
@@ -73,15 +75,15 @@ export class WebSocketService {
       socket.on('subscribe_market', async (data: { market_id: string }) => {
         try {
           const { market_id } = data;
-          
+
           if (!ObjectId.isValid(market_id)) {
             socket.emit('subscription_error', { error: 'Invalid market ID' });
             return;
           }
 
           // Join the market room
-          await socket.join(`market:${market_id}`);
-          
+          socket.join(`market:${market_id}`);
+
           // Update user's subscribed markets
           const user_data = this.connected_users.get(socket.id);
           if (user_data) {
@@ -99,7 +101,7 @@ export class WebSocketService {
           }
 
           socket.emit('subscribed', { market_id, success: true });
-          console.log(`📊 Socket ${socket.id} subscribed to market ${market_id}`);
+          this.logger.debug(`📊 Socket ${socket.id} subscribed to market ${market_id}`);
         } catch (error) {
           socket.emit('subscription_error', { error: 'Failed to subscribe to market' });
         }
@@ -109,10 +111,10 @@ export class WebSocketService {
       socket.on('unsubscribe_market', async (data: { market_id: string }) => {
         try {
           const { market_id } = data;
-          
+
           // Leave the market room
-          await socket.leave(`market:${market_id}`);
-          
+          socket.leave(`market:${market_id}`);
+
           // Update user's subscribed markets
           const user_data = this.connected_users.get(socket.id);
           if (user_data) {
@@ -120,7 +122,7 @@ export class WebSocketService {
           }
 
           socket.emit('unsubscribed', { market_id, success: true });
-          console.log(`📊 Socket ${socket.id} unsubscribed from market ${market_id}`);
+          this.logger.debug(`📊 Socket ${socket.id} unsubscribed from market ${market_id}`);
         } catch (error) {
           socket.emit('unsubscription_error', { error: 'Failed to unsubscribe from market' });
         }
@@ -130,7 +132,7 @@ export class WebSocketService {
       socket.on('subscribe_orderbook', async (data: { market_id: string; outcome_id: string }) => {
         try {
           const { market_id, outcome_id } = data;
-          
+
           if (!ObjectId.isValid(market_id) || !ObjectId.isValid(outcome_id)) {
             socket.emit('subscription_error', { error: 'Invalid market or outcome ID' });
             return;
@@ -138,8 +140,8 @@ export class WebSocketService {
 
           // Join the order book room
           const room = `orderbook:${market_id}:${outcome_id}`;
-          await socket.join(room);
-          
+          socket.join(room);
+
           // Send initial order book data
           const order_book = await cache_service.get_cached_order_book(market_id, outcome_id);
           if (order_book) {
@@ -152,7 +154,7 @@ export class WebSocketService {
           }
 
           socket.emit('subscribed_orderbook', { market_id, outcome_id, success: true });
-          console.log(`📖 Socket ${socket.id} subscribed to order book ${market_id}:${outcome_id}`);
+          this.logger.debug(`📖 Socket ${socket.id} subscribed to order book ${market_id}:${outcome_id}`);
         } catch (error) {
           socket.emit('subscription_error', { error: 'Failed to subscribe to order book' });
         }
@@ -165,8 +167,8 @@ export class WebSocketService {
 
       // Handle disconnection
       socket.on('disconnect', (reason) => {
-        console.log(`🔌 WebSocket disconnected: ${socket.id}, reason: ${reason}`);
-        
+        this.logger.debug(`🔌 WebSocket disconnected: ${socket.id}, reason: ${reason}`);
+
         // Clean up user data
         this.connected_users.delete(socket.id);
       });
@@ -174,6 +176,11 @@ export class WebSocketService {
   }
 
   private async setup_redis_subscription(): Promise<void> {
+    if (!is_redis_available()) {
+      this.logger.warn('Redis not available, skipping Redis pub/sub for WebSocket');
+      return;
+    }
+
     try {
       const redis = get_redis();
       this.redis_subscriber = redis.duplicate();
@@ -186,13 +193,13 @@ export class WebSocketService {
           const data = JSON.parse(message);
           this.handle_redis_message(pattern, channel, data);
         } catch (error) {
-          console.error('Error parsing Redis message:', error);
+          this.logger.error('Error parsing Redis message:', error);
         }
       });
 
-      console.log('🔴 WebSocket service subscribed to Redis channels');
+      this.logger.info('🔴 WebSocket service subscribed to Redis channels');
     } catch (error) {
-      console.error('❌ Failed to setup Redis subscription for WebSocket:', error);
+      this.logger.error('❌ Failed to setup Redis subscription for WebSocket:', error);
     }
   }
 
@@ -280,32 +287,45 @@ export class WebSocketService {
   public async notify_market_update(market_id: string, update: MarketUpdate): Promise<void> {
     // Cache the update
     await cache_service.publish_market_update(market_id, update);
-    
+
     // Broadcast directly as well (in case Redis subscription isn't working)
     this.broadcast_to_market(market_id, 'market_update', update);
   }
 
   public async notify_trade_execution(
-    market_id: string, 
-    outcome_id: string, 
+    market_id: string,
+    outcome_id: string,
     trade: any
   ): Promise<void> {
     // Publish to Redis for persistence and cross-service communication
     await cache_service.publish_trade_execution(market_id, outcome_id, trade);
-    
+
     // Broadcast to connected clients
     this.broadcast_to_market(market_id, 'trade_executed', trade);
     this.broadcast_to_orderbook(market_id, outcome_id, 'trade_executed', trade);
   }
 
+  public async notify_orderbook_update(
+    market_id: string,
+    outcome_id: string,
+    order_book: any
+  ): Promise<void> {
+    await cache_service.publish_orderbook_update(market_id, outcome_id, order_book);
+    this.broadcast_to_orderbook(market_id, outcome_id, 'orderbook_update', order_book);
+  }
+
   public async shutdown(): Promise<void> {
     if (this.redis_subscriber) {
-      await this.redis_subscriber.punsubscribe();
-      await this.redis_subscriber.quit();
+      try {
+        await this.redis_subscriber.punsubscribe();
+        await this.redis_subscriber.quit();
+      } catch (error) {
+        this.logger.error('Error shutting down Redis subscriber:', error);
+      }
     }
-    
+
     this.io.close();
-    console.log('🔌 WebSocket service shut down');
+    this.logger.info('🔌 WebSocket service shut down');
   }
 }
 
