@@ -13,9 +13,10 @@ export interface RedisConfig {
   maxRetriesPerRequest: number;
 }
 
-function get_redis_connection_options(): { host: string; port: number; db: number; password?: string; retryDelayOnFailover: number; maxRetriesPerRequest: number; enableReadyCheck: boolean; lazyConnect: boolean; retryStrategy: () => null } {
+function get_redis_connection_options(): { host: string; port: number; db: number; username?: string; password?: string; retryDelayOnFailover: number; maxRetriesPerRequest: number; enableReadyCheck: boolean; lazyConnect: boolean; retryStrategy: () => null } {
   const redis_api = process.env.REDIS_API;
   const redis_db_name = process.env.REDIS_DATABASE_NAME;
+  const redis_account_key = process.env.REDIS_API_ACCOUNT_KEY;
 
   const base_options = {
     retryDelayOnFailover: 100,
@@ -25,9 +26,8 @@ function get_redis_connection_options(): { host: string; port: number; db: numbe
     retryStrategy: () => null as null, // Disable auto-reconnect on failure
   };
 
-  // If REDIS_API looks like a host:port or just host, build options with password from REDIS_DATABASE_NAME
+  // Parse host:port from REDIS_API (e.g. redis-19972.c80.us-east-1-2.ec2.cloud.redislabs.com:19972)
   if (redis_api && !redis_api.includes(' ')) {
-    // Parse host:port if present
     let host = redis_api;
     let port = parseInt(process.env.REDIS_PORT || '6379');
     if (redis_api.includes(':')) {
@@ -40,17 +40,20 @@ function get_redis_connection_options(): { host: string; port: number; db: numbe
       host,
       port,
       db: parseInt(process.env.REDIS_DB || '0'),
-      password: redis_db_name || process.env.REDIS_PASSWORD,
+      // Redis Cloud: REDIS_DATABASE_NAME is the username, REDIS_API_ACCOUNT_KEY is the password
+      username: redis_db_name || undefined,
+      password: redis_account_key || process.env.REDIS_PASSWORD || undefined,
     };
   }
 
-  // Otherwise build options from individual env vars
+  // Fallback to individual env vars
   return {
     ...base_options,
     host: process.env.REDIS_HOST || 'localhost',
     port: parseInt(process.env.REDIS_PORT || '6379'),
     db: parseInt(process.env.REDIS_DB || '0'),
-    password: process.env.REDIS_PASSWORD || redis_db_name,
+    username: redis_db_name || undefined,
+    password: redis_account_key || process.env.REDIS_PASSWORD || undefined,
   };
 }
 
