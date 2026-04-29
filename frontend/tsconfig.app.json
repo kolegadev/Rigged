@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": false,  // Changed to false to allow regular imports
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Linting - All disabled for maximum leniency */
+    "strict": false,                        // Disables all strict type checking
+    "noUnusedLocals": false,                // Allows unused variables
+    "noUnusedParameters": false,            // Allows unused parameters
+    "erasableSyntaxOnly": false,            // Changed to false
+    "noFallthroughCasesInSwitch": false,   // Allows fallthrough in switch cases
+    "noUncheckedSideEffectImports": false, // Allows unchecked imports
+
+    /* Path mapping */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src"]
+}

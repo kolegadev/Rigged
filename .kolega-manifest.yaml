@@ -1,0 +1,13 @@
+name: kolega-full-stack-app
+runtime: node:19
+# Install dependencies for all packages (root, frontend, and backend)
+install_commands:
+  - cd frontend && (npm install || npm install --legacy-peer-deps)
+  - cd backend && (npm install || npm install --legacy-peer-deps)
+
+backend_build_command: cd backend && npm run build
+frontend_build_command: cd frontend && npm run build
+
+dev_server_commands:
+  - cd backend && nohup bash -c 'while true; do npm run dev; echo "Backend dev server stopped. Restarting in 2 seconds..."; sleep 2; done' > ../backend.log 2>&1 &
+  - cd frontend && nohup bash -c 'while true; do npm run dev; echo "Frontend dev server stopped. Restarting in 2 seconds..."; sleep 2; done' > ../frontend.log 2>&1 &
