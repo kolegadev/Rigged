@@ -1,21 +1,8 @@
 import { get_database } from '../database/connection.js';
 import { ObjectId, ClientSession } from 'mongodb';
+import { Position } from '../database/schemas.js';
 import { Logger } from '../utils/logger.js';
 import { events } from './simple_stubs.js';
-
-export interface Position {
-  _id?: ObjectId;
-  user_id: ObjectId;
-  market_id: ObjectId;
-  outcome_id: ObjectId;
-  quantity: number; // Net position (can be negative)
-  average_price: number; // Volume-weighted average price
-  total_cost: number; // Total amount paid/received for this position
-  realized_pnl: number; // Profit/loss from closed positions
-  unrealized_pnl: number; // Current mark-to-market P&L
-  created_at: Date;
-  updated_at: Date;
-}
 
 export interface TradePositionUpdate {
   user_id: ObjectId;
@@ -106,6 +93,7 @@ export const create_position_engine = () => {
         total_cost: side === 'BUY' ? trade_cost : -trade_cost,
         realized_pnl: 0,
         unrealized_pnl: 0,
+        is_settled: false,
         created_at: new Date(),
         updated_at: new Date()
       };

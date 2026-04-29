@@ -1,6 +1,6 @@
 import { ObjectId } from 'mongodb';
 import { get_database, get_client } from '../database/connection.js';
-import { COLLECTIONS, UserBalance, Wallet } from '../database/schemas.js';
+import { COLLECTIONS, UserBalance, Wallet, LedgerEntry } from '../database/schemas.js';
 
 export interface BalanceInfo {
   currency: string;
@@ -19,6 +19,40 @@ export interface WalletInfo {
 export interface BalanceResult {
   success: boolean;
   error?: string;
+}
+
+/**
+ * Helper to create a ledger entry for audit trail
+ */
+async function create_ledger_entry(
+  user_id: string,
+  entry_type: LedgerEntry['entry_type'],
+  amount: number,
+  currency: string,
+  balance_after: number,
+  reference_type?: LedgerEntry['reference_type'],
+  reference_id?: string,
+  description?: string
+): Promise<void> {
+  const db = get_database();
+  const entry: Omit<LedgerEntry, '_id'> = {
+    user_id: new ObjectId(user_id),
+    entry_type,
+    amount,
+    currency: currency as 'USDC',
+    reference_type,
+    reference_id: reference_id ? new ObjectId(reference_id) : undefined,
+    description: description || `${entry_type} of ${amount} ${currency}`,
+    balance_after,
+    created_at: new Date()
+  };
+
+  try {
+    await db.collection(COLLECTIONS.ledger_entries).insertOne(entry);
+  } catch (error) {
+    console.error('Failed to write ledger entry:', error);
+    // Don't throw - ledger is for audit, shouldn't block main operation
+  }
 }
 
 export const balance_service = {
@@ -140,6 +174,18 @@ export const balance_service = {
         return { success: false, error: 'Balance changed during operation. Please try again.' };
       }
 
+      // Write ledger entry for audit trail
+      await create_ledger_entry(
+        user_id,
+        'trade',
+        -amount,
+        currency,
+        new_available,
+        'order',
+        reference_id,
+        `Locked funds for order${reference_id ? ` ${reference_id}` : ''}`
+      );
+
       console.log(`✅ Locked $${amount} ${currency} for user ${user_id}${reference_id ? ` (ref: ${reference_id})` : ''}`);
       return { success: true };
 
@@ -205,6 +251,18 @@ export const balance_service = {
       if (update_result.matchedCount === 0) {
         return { success: false, error: 'Balance changed during operation. Please try again.' };
       }
+
+      // Write ledger entry for audit trail
+      await create_ledger_entry(
+        user_id,
+        'trade',
+        amount,
+        currency,
+        new_available,
+        'order',
+        reference_id,
+        `Unlocked funds from cancelled order${reference_id ? ` ${reference_id}` : ''}`
+      );
 
       console.log(`✅ Unlocked $${amount} ${currency} for user ${user_id}${reference_id ? ` (ref: ${reference_id})` : ''}`);
       return { success: true };
@@ -279,6 +337,34 @@ export const balance_service = {
             },
             { session }
           );
+
+          // Write ledger entries inside transaction for consistency
+          const sender_ledger: Omit<LedgerEntry, '_id'> = {
+            user_id: new ObjectId(from_user_id),
+            entry_type: 'trade',
+            amount: -amount,
+            currency: currency as 'USDC',
+            reference_type: 'trade',
+            reference_id: reference_id ? new ObjectId(reference_id) : undefined,
+            description: `Trade settlement payout${reference_id ? ` for trade ${reference_id}` : ''}`,
+            balance_after: sender_balance.locked_balance - amount,
+            created_at: new Date()
+          };
+
+          const receiver_ledger: Omit<LedgerEntry, '_id'> = {
+            user_id: new ObjectId(to_user_id),
+            entry_type: 'trade',
+            amount,
+            currency: currency as 'USDC',
+            reference_type: 'trade',
+            reference_id: reference_id ? new ObjectId(reference_id) : undefined,
+            description: `Trade settlement receipt${reference_id ? ` for trade ${reference_id}` : ''}`,
+            balance_after: receiver_balance.available_balance + amount,
+            created_at: new Date()
+          };
+
+          await db.collection(COLLECTIONS.ledger_entries).insertOne(sender_ledger, { session });
+          await db.collection(COLLECTIONS.ledger_entries).insertOne(receiver_ledger, { session });
         });
 
         console.log(`✅ Transferred $${amount} ${currency} from ${from_user_id} to ${to_user_id}${reference_id ? ` (ref: ${reference_id})` : ''}`);

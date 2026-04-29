@@ -16,13 +16,13 @@ export interface Order {
   user_id: ObjectId;
   market_id: ObjectId;
   outcome_id: ObjectId;
-  side: 'BUY' | 'SELL';
-  order_type: 'MARKET' | 'LIMIT';
+  side: 'buy' | 'sell';
+  order_type: 'market' | 'limit';
   price: number;
   original_quantity: number;
   filled_quantity: number;
   remaining_quantity: number;
-  status: 'ACTIVE' | 'FILLED' | 'CANCELLED' | 'PARTIALLY_FILLED';
+  status: 'active' | 'filled' | 'cancelled' | 'partial';
   created_at: Date;
   updated_at: Date;
 }
@@ -72,7 +72,7 @@ export const create_matching_engine = () => {
       const active_orders = await orders_collection.find({
         market_id: new ObjectId(market_id),
         outcome_id: new ObjectId(outcome_id),
-        status: { $in: ['ACTIVE', 'PARTIALLY_FILLED'] },
+        status: { $in: ['active', 'partial'] },
         remaining_quantity: { $gt: 0 }
       }).toArray() as Order[];
 
@@ -83,7 +83,7 @@ export const create_matching_engine = () => {
 
       // Separate into buy and sell orders
       const buy_orders = active_orders
-        .filter(order => order.side === 'BUY')
+        .filter(order => order.side === 'buy')
         .sort((a, b) => {
           // Price priority: highest price first for buys
           if (a.price !== b.price) return b.price - a.price;
@@ -92,7 +92,7 @@ export const create_matching_engine = () => {
         });
 
       const sell_orders = active_orders
-        .filter(order => order.side === 'SELL')
+        .filter(order => order.side === 'sell')
         .sort((a, b) => {
           // Price priority: lowest price first for sells  
           if (a.price !== b.price) return a.price - b.price;
@@ -201,7 +201,7 @@ export const create_matching_engine = () => {
       const active_combinations = await db.collection('orders').aggregate([
         {
           $match: {
-            status: { $in: ['ACTIVE', 'PARTIALLY_FILLED'] },
+            status: { $in: ['active', 'partial'] },
             remaining_quantity: { $gt: 0 }
           }
         },

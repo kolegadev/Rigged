@@ -3,6 +3,7 @@ import { matching_engine } from '../services/matching_engine.js';
 import { order_book_service } from '../services/order_book.js';
 import { trade_execution_service } from '../services/trade_execution.js';
 import { position_engine } from '../services/position_engine.js';
+import { reconciliation_service } from '../services/reconciliation.js';
 import { get_user_from_request } from '../middleware/auth.js';
 import { Logger } from '../utils/logger.js';
 
@@ -358,6 +359,98 @@ export const create_trading_routes = (): Hono => {
       return c.json({
         success: false,
         error: 'Failed to get market position stats'
+      }, 500);
+    }
+  });
+
+  // Protected reconciliation routes
+
+  /**
+   * GET /api/trading/reconciliation/balance
+   * Get user's own balance reconciliation
+   */
+  router.get('/reconciliation/balance', async (c) => {
+    try {
+      const user = await get_user_from_request(c.req);
+      if (!user) {
+        return c.json({ success: false, error: 'Unauthorized' }, 401);
+      }
+
+      const results = await reconciliation_service.reconcile_user_balance(user.id);
+      
+      return c.json({
+        success: true,
+        balance_reconciliation: results
+      });
+    } catch (error) {
+      logger.error(`Error reconciling user balance: ${error}`);
+      return c.json({
+        success: false,
+        error: 'Failed to reconcile balance'
+      }, 500);
+    }
+  });
+
+  /**
+   * GET /api/trading/reconciliation/positions
+   * Get user's own position reconciliation
+   */
+  router.get('/reconciliation/positions', async (c) => {
+    try {
+      const user = await get_user_from_request(c.req);
+      if (!user) {
+        return c.json({ success: false, error: 'Unauthorized' }, 401);
+      }
+
+      const results = await reconciliation_service.reconcile_user_positions(user.id);
+      
+      return c.json({
+        success: true,
+        position_reconciliation: results
+      });
+    } catch (error) {
+      logger.error(`Error reconciling user positions: ${error}`);
+      return c.json({
+        success: false,
+        error: 'Failed to reconcile positions'
+      }, 500);
+    }
+  });
+
+  /**
+   * GET /api/trading/reconciliation/orders/:order_id
+   * Get order reconciliation for a user's order
+   */
+  router.get('/reconciliation/orders/:order_id', async (c) => {
+    try {
+      const user = await get_user_from_request(c.req);
+      if (!user) {
+        return c.json({ success: false, error: 'Unauthorized' }, 401);
+      }
+
+      const order_id = c.req.param('order_id');
+      const result = await reconciliation_service.reconcile_order(order_id);
+      const summary = await reconciliation_service.get_order_trade_summary(order_id);
+
+      // Ensure user owns this order
+      if (summary.order && summary.order.user_id.toString() !== user.id) {
+        return c.json({ success: false, error: 'Unauthorized' }, 403);
+      }
+      
+      return c.json({
+        success: true,
+        reconciliation: result,
+        trade_summary: {
+          total_bought: summary.total_bought,
+          total_sold: summary.total_sold,
+          trade_count: summary.trades_as_buyer.length + summary.trades_as_seller.length
+        }
+      });
+    } catch (error) {
+      logger.error(`Error reconciling order: ${error}`);
+      return c.json({
+        success: false,
+        error: 'Failed to reconcile order'
       }, 500);
     }
   });

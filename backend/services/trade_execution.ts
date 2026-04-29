@@ -1,5 +1,6 @@
 import { get_database } from '../database/connection.js';
 import { ObjectId, ClientSession } from 'mongodb';
+import { Trade } from '../database/schemas.js';
 import { balance_service } from './balance.js';
 import { events } from './simple_stubs.js';
 import { Logger } from '../utils/logger.js';
@@ -12,6 +13,7 @@ export interface TradeExecutionRequest {
     outcome_id: ObjectId;
     price: number;
     remaining_quantity: number;
+    filled_quantity?: number;
   };
   sell_order: {
     _id: ObjectId;
@@ -20,6 +22,7 @@ export interface TradeExecutionRequest {
     outcome_id: ObjectId;
     price: number;
     remaining_quantity: number;
+    filled_quantity?: number;
   };
   trade_price: number;
   trade_quantity: number;
@@ -31,22 +34,6 @@ export interface TradeExecutionResult {
   error?: string;
   buyer_fill?: number;
   seller_fill?: number;
-}
-
-export interface TradeRecord {
-  _id?: ObjectId;
-  buyer_order_id: ObjectId;
-  seller_order_id: ObjectId;
-  buyer_user_id: ObjectId;
-  seller_user_id: ObjectId;
-  market_id: ObjectId;
-  outcome_id: ObjectId;
-  price: number;
-  quantity: number;
-  buyer_cost: number;
-  seller_payout: number;
-  timestamp: Date;
-  settlement_status: 'PENDING' | 'SETTLED';
 }
 
 export const create_trade_execution_service = () => {
@@ -69,9 +56,9 @@ export const create_trade_execution_service = () => {
       let trade_id: ObjectId;
       
       // Start transaction for atomicity
-      const transaction_result = await session.withTransaction(async (session_ctx: ClientSession) => {
+      await session.withTransaction(async (session_ctx: ClientSession) => {
         // 1. Create the trade record
-        const trade_record: TradeRecord = {
+        const trade_record: Omit<Trade, '_id'> = {
           buyer_order_id: buy_order._id,
           seller_order_id: sell_order._id,
           buyer_user_id: buy_order.user_id,
@@ -82,8 +69,8 @@ export const create_trade_execution_service = () => {
           quantity: trade_quantity,
           buyer_cost: trade_price * trade_quantity,
           seller_payout: trade_price * trade_quantity,
-          timestamp: new Date(),
-          settlement_status: 'PENDING'
+          settlement_status: 'pending',
+          timestamp: new Date()
         };
 
         const trade_result = await db.collection('trades').insertOne(trade_record, { session: session_ctx });
@@ -92,9 +79,9 @@ export const create_trade_execution_service = () => {
         logger.debug(`Created trade record ${trade_id}`);
 
         // 2. Update buy order
-        const new_buy_filled = (buy_order as any).filled_quantity + trade_quantity;
+        const new_buy_filled = (buy_order.filled_quantity || 0) + trade_quantity;
         const new_buy_remaining = buy_order.remaining_quantity - trade_quantity;
-        const buy_status = new_buy_remaining === 0 ? 'FILLED' : 'PARTIALLY_FILLED';
+        const buy_status = new_buy_remaining === 0 ? 'filled' : 'partial';
 
         await db.collection('orders').updateOne(
           { _id: buy_order._id },
@@ -112,9 +99,9 @@ export const create_trade_execution_service = () => {
         logger.debug(`Updated buy order ${buy_order._id}: filled=${new_buy_filled}, remaining=${new_buy_remaining}, status=${buy_status}`);
 
         // 3. Update sell order  
-        const new_sell_filled = (sell_order as any).filled_quantity + trade_quantity;
+        const new_sell_filled = (sell_order.filled_quantity || 0) + trade_quantity;
         const new_sell_remaining = sell_order.remaining_quantity - trade_quantity;
-        const sell_status = new_sell_remaining === 0 ? 'FILLED' : 'PARTIALLY_FILLED';
+        const sell_status = new_sell_remaining === 0 ? 'filled' : 'partial';
 
         await db.collection('orders').updateOne(
           { _id: sell_order._id },
@@ -133,7 +120,7 @@ export const create_trade_execution_service = () => {
 
         // 4. Handle fund transfers
         await execute_fund_transfers({
-          trade_record,
+          trade_record: { ...trade_record, _id: trade_id },
           session: session_ctx
         });
 
@@ -141,22 +128,16 @@ export const create_trade_execution_service = () => {
         // Note: Position updates happen outside transaction to avoid deadlocks
 
         logger.info(`Trade ${trade_id} executed successfully`);
-        return {
-          success: true,
-          trade_id,
-          buyer_fill: new_buy_filled,
-          seller_fill: new_sell_filled
-        };
       });
 
       // Post-transaction operations (non-atomic but important)
-      await post_trade_operations(request, trade_id);
+      await post_trade_operations(request, trade_id!);
 
       return {
         success: true,
-        trade_id,
-        buyer_fill: ((buy_order as any).filled_quantity || 0) + trade_quantity,
-        seller_fill: ((sell_order as any).filled_quantity || 0) + trade_quantity
+        trade_id: trade_id!,
+        buyer_fill: (buy_order.filled_quantity || 0) + trade_quantity,
+        seller_fill: (sell_order.filled_quantity || 0) + trade_quantity
       };
 
     } catch (error) {
@@ -178,12 +159,12 @@ export const create_trade_execution_service = () => {
     trade_record,
     session
   }: {
-    trade_record: TradeRecord;
+    trade_record: Trade;
     session: ClientSession;
   }): Promise<void> => {
-    const { buyer_user_id, seller_user_id, buyer_cost, seller_payout, market_id } = trade_record;
+    const { buyer_user_id, seller_user_id, seller_payout } = trade_record;
 
-    logger.debug(`Executing fund transfers: buyer pays ${buyer_cost}, seller receives ${seller_payout}`);
+    logger.debug(`Executing fund transfers: buyer pays ${trade_record.buyer_cost}, seller receives ${seller_payout}`);
 
     // For prediction markets:
     // - Buyer's locked funds are transferred to seller as payout
@@ -282,7 +263,7 @@ export const create_trade_execution_service = () => {
   /**
    * Get trade history for a user
    */
-  const get_user_trades = async (user_id: string, market_id?: string, limit: number = 50): Promise<TradeRecord[]> => {
+  const get_user_trades = async (user_id: string, market_id?: string, limit: number = 50): Promise<Trade[]> => {
     const db = get_database();
     const filter: any = {
       $or: [
@@ -299,7 +280,7 @@ export const create_trade_execution_service = () => {
       .find(filter)
       .sort({ timestamp: -1 })
       .limit(limit)
-      .toArray() as TradeRecord[];
+      .toArray() as Trade[];
 
     return trades;
   };
@@ -307,7 +288,7 @@ export const create_trade_execution_service = () => {
   /**
    * Get trade history for a market
    */
-  const get_market_trades = async (market_id: string, outcome_id?: string, limit: number = 100): Promise<TradeRecord[]> => {
+  const get_market_trades = async (market_id: string, outcome_id?: string, limit: number = 100): Promise<Trade[]> => {
     const db = get_database();
     const filter: any = { market_id: new ObjectId(market_id) };
 
@@ -319,7 +300,7 @@ export const create_trade_execution_service = () => {
       .find(filter)
       .sort({ timestamp: -1 })
       .limit(limit)
-      .toArray() as TradeRecord[];
+      .toArray() as Trade[];
 
     return trades;
   };
@@ -331,7 +312,7 @@ export const create_trade_execution_service = () => {
     price: number;
     quantity: number;
     timestamp: number;
-    side: 'BUY' | 'SELL'; // From the perspective of the price taker
+    side: 'buy' | 'sell'; // From the perspective of the price taker
   }[]> => {
     const trades = await get_market_trades(market_id, outcome_id, limit);
     
@@ -339,7 +320,7 @@ export const create_trade_execution_service = () => {
       price: trade.price,
       quantity: trade.quantity,
       timestamp: trade.timestamp.getTime(),
-      side: 'BUY' // In prediction markets, we could determine this based on order timestamps
+      side: 'buy' // In prediction markets, we could determine this based on order timestamps
     }));
   };
 
@@ -362,7 +343,7 @@ export const create_trade_execution_service = () => {
     }
 
     // Get all trades for statistics
-    const trades = await db.collection('trades').find(filter).toArray() as TradeRecord[];
+    const trades = await db.collection('trades').find(filter).toArray() as Trade[];
     
     if (trades.length === 0) {
       return {

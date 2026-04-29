@@ -5,7 +5,7 @@ import { balance_service } from './balance.js';
 
 export type OrderSide = 'buy' | 'sell';
 export type OrderType = 'limit' | 'market';
-export type OrderStatus = 'pending' | 'ACTIVE' | 'PARTIALLY_FILLED' | 'FILLED' | 'cancelled' | 'expired' | 'partial' | 'filled';
+export type OrderStatus = 'active' | 'partial' | 'filled' | 'cancelled' | 'expired';
 export type TimeInForce = 'GTC' | 'IOC' | 'FOK';
 
 export interface PlaceOrderInput {
@@ -193,7 +193,7 @@ export const order_service = {
         quantity: input.quantity,
         filled_quantity: 0,
         remaining_quantity: input.quantity,
-        status: 'pending',
+        status: 'active',
         time_in_force: input.time_in_force || 'GTC',
         created_at: now,
         updated_at: now
@@ -230,7 +230,7 @@ export const order_service = {
           quantity: input.quantity,
           filled_quantity: 0,
           remaining_quantity: input.quantity,
-          status: 'ACTIVE', // Changed from 'pending' to match matching engine expectations
+          status: 'active',
           cost_locked: total_cost,
           created_at: now,
           updated_at: now
@@ -347,7 +347,7 @@ export const order_service = {
         return { success: false, error: 'Order not found' };
       }
 
-      if (order.status !== 'pending' && order.status !== 'partial') {
+      if (order.status !== 'active' && order.status !== 'partial') {
         return { success: false, error: 'Order cannot be cancelled' };
       }
 

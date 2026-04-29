@@ -245,10 +245,10 @@ This document outlines all components needed to build the MVP for a Polygon-base
 - [x] 4.5 Build balance update mechanisms *Completed: Enhanced balance service for trade settlement*
 
 ### Database Schema - Trading
-- [ ] 4.6 Create trades table
-- [ ] 4.7 Create positions table
-- [ ] 4.8 Add trade execution indexes
-- [ ] 4.9 Implement trade reconciliation
+- [x] 4.6 Create trades table *Completed: Trade schema aligned with actual DB fields (buyer_order_id, seller_order_id, buyer_cost, seller_payout, settlement_status, timestamp). Trade records are created atomically by trade_execution service.*
+- [x] 4.7 Create positions table *Completed: Position schema aligned with settlement fields (is_settled, settlement_value, settled_at). Position engine creates positions with is_settled: false and updates realized/unrealized P&L.*
+- [x] 4.8 Add trade execution indexes *Completed: Added buyer_order_id, seller_order_id, timestamp, and market_id+timestamp composite indexes on trades. Added is_settled index on positions.*
+- [x] 4.9 Implement trade reconciliation *Completed: Full reconciliation service with order-vs-trades, balance-vs-ledger, and position-vs-trades verification. Admin endpoints at /api/admin/reconciliation and user endpoints at /api/trading/reconciliation/*.
 
 ### Redis Integration
 - [ ] 4.10 Set up Redis for order book state

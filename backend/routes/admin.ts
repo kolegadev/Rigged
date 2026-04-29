@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { ObjectId } from 'mongodb';
 import { get_database } from '../database/connection.js';
 import { Auction, Event, Market, Outcome, COLLECTIONS } from '../database/schemas.js';
+import { reconciliation_service } from '../services/reconciliation.js';
 
 export const create_admin_routes = (): Hono => {
   const router = new Hono();
@@ -395,6 +396,109 @@ export const create_admin_routes = (): Hono => {
       return c.json({
         success: false,
         error: 'Failed to fetch events'
+      }, 500);
+    }
+  });
+
+  // GET /api/admin/reconciliation - Run full system reconciliation
+  router.get('/reconciliation', async (c) => {
+    try {
+      const report = await reconciliation_service.run_full_reconciliation();
+
+      return c.json({
+        success: true,
+        report: {
+          timestamp: report.timestamp,
+          summary: report.summary,
+          orders: {
+            checked: report.orders_checked,
+            valid: report.orders_valid,
+            invalid: report.orders_invalid
+          },
+          balances: {
+            checked: report.balances_checked,
+            valid: report.balances_valid,
+            invalid: report.balances_invalid
+          },
+          positions: {
+            checked: report.positions_checked,
+            valid: report.positions_valid,
+            invalid: report.positions_invalid
+          },
+          invalid_order_results: report.order_results,
+          invalid_balance_results: report.balance_results,
+          invalid_position_results: report.position_results
+        }
+      });
+    } catch (error) {
+      console.error('Reconciliation error:', error);
+      return c.json({
+        success: false,
+        error: 'Failed to run reconciliation'
+      }, 500);
+    }
+  });
+
+  // GET /api/admin/reconciliation/orders/:order_id - Reconcile a specific order
+  router.get('/reconciliation/orders/:order_id', async (c) => {
+    try {
+      const order_id = c.req.param('order_id');
+
+      if (!ObjectId.isValid(order_id)) {
+        return c.json({
+          success: false,
+          error: 'Invalid order_id'
+        }, 400);
+      }
+
+      const result = await reconciliation_service.reconcile_order(order_id);
+      const summary = await reconciliation_service.get_order_trade_summary(order_id);
+
+      return c.json({
+        success: true,
+        reconciliation: result,
+        trade_summary: {
+          total_bought: summary.total_bought,
+          total_sold: summary.total_sold,
+          trade_count: summary.trades_as_buyer.length + summary.trades_as_seller.length
+        }
+      });
+    } catch (error) {
+      console.error('Order reconciliation error:', error);
+      return c.json({
+        success: false,
+        error: 'Failed to reconcile order'
+      }, 500);
+    }
+  });
+
+  // GET /api/admin/reconciliation/markets/:market_id/orders - Reconcile all orders for a market
+  router.get('/reconciliation/markets/:market_id/orders', async (c) => {
+    try {
+      const market_id = c.req.param('market_id');
+
+      if (!ObjectId.isValid(market_id)) {
+        return c.json({
+          success: false,
+          error: 'Invalid market_id'
+        }, 400);
+      }
+
+      const results = await reconciliation_service.reconcile_market_orders(market_id);
+      const invalid = results.filter(r => !r.is_valid);
+
+      return c.json({
+        success: true,
+        market_id,
+        total_orders: results.length,
+        invalid_count: invalid.length,
+        invalid_results: invalid
+      });
+    } catch (error) {
+      console.error('Market reconciliation error:', error);
+      return c.json({
+        success: false,
+        error: 'Failed to reconcile market orders'
       }, 500);
     }
   });

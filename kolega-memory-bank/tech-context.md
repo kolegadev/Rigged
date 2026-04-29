@@ -34,3 +34,20 @@ cd backend && npm run start     # Run compiled output
 ## Ports
 - Frontend dev server: 5173 (Vite default)
 - Backend server: 9002 (configured in project)
+
+## API Endpoints
+
+### Trading
+- `GET /api/trading/orderbook/:market_id/:outcome_id` - Order book snapshot
+- `GET /api/trading/trades/:market_id` - Market trade history
+- `GET /api/trading/positions` - User positions (auth required)
+- `GET /api/trading/my-trades` - User trade history (auth required)
+- `POST /api/trading/trigger-matching/:market_id/:outcome_id` - Admin match trigger
+
+### Reconciliation
+- `GET /api/admin/reconciliation` - Full system reconciliation report
+- `GET /api/admin/reconciliation/orders/:order_id` - Reconcile specific order
+- `GET /api/admin/reconciliation/markets/:market_id/orders` - Reconcile all orders for market
+- `GET /api/trading/reconciliation/balance` - User balance reconciliation (auth required)
+- `GET /api/trading/reconciliation/positions` - User position reconciliation (auth required)
+- `GET /api/trading/reconciliation/orders/:order_id` - User order reconciliation (auth required)

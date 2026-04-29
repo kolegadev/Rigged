@@ -187,7 +187,7 @@ export interface Order {
   remaining_quantity: number;
   
   // Order management
-  status: 'pending' | 'partial' | 'filled' | 'cancelled' | 'expired';
+  status: 'active' | 'partial' | 'filled' | 'cancelled' | 'expired';
   time_in_force: 'GTC' | 'IOC' | 'FOK'; // Good Till Cancel, Immediate Or Cancel, Fill Or Kill
   
   // Timestamps
@@ -205,21 +205,25 @@ export interface Trade {
   outcome_id: ObjectId;
   
   // Order references
-  buy_order_id: ObjectId;
-  sell_order_id: ObjectId;
-  buy_user_id: ObjectId;
-  sell_user_id: ObjectId;
+  buyer_order_id: ObjectId;
+  seller_order_id: ObjectId;
+  buyer_user_id: ObjectId;
+  seller_user_id: ObjectId;
   
   // Trade details
   price: number;
   quantity: number;
-  total_value: number; // price * quantity
+  buyer_cost: number; // price * quantity
+  seller_payout: number; // price * quantity
   
   // Fees (future enhancement)
-  buy_fee?: number;
-  sell_fee?: number;
+  buyer_fee?: number;
+  seller_fee?: number;
   
-  executed_at: Date;
+  // Settlement tracking
+  settlement_status: 'pending' | 'settled';
+  
+  timestamp: Date;
 }
 
 // User positions in markets
@@ -233,12 +237,12 @@ export interface Position {
   quantity: number; // Can be negative for short positions
   average_price: number;
   total_cost: number;
+  realized_pnl: number;
   unrealized_pnl: number;
   
   // Settlement
   is_settled: boolean;
   settlement_value?: number;
-  realized_pnl?: number;
   settled_at?: Date;
   
   created_at: Date;

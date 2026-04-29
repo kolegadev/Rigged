@@ -48,8 +48,8 @@ export const create_order_book_service = () => {
         $match: {
           market_id: new ObjectId(market_id),
           outcome_id: new ObjectId(outcome_id),
-          side: 'BUY',
-          status: { $in: ['ACTIVE', 'PARTIALLY_FILLED'] },
+          side: 'buy',
+          status: { $in: ['active', 'partial'] },
           remaining_quantity: { $gt: 0 }
         }
       },
@@ -82,8 +82,8 @@ export const create_order_book_service = () => {
         $match: {
           market_id: new ObjectId(market_id),
           outcome_id: new ObjectId(outcome_id),
-          side: 'SELL',
-          status: { $in: ['ACTIVE', 'PARTIALLY_FILLED'] },
+          side: 'sell',
+          status: { $in: ['active', 'partial'] },
           remaining_quantity: { $gt: 0 }
         }
       },
@@ -266,7 +266,7 @@ export const create_order_book_service = () => {
     // Find all outcomes with active orders for this market
     const active_outcomes = await db.collection('orders').distinct('outcome_id', {
       market_id: new ObjectId(market_id),
-      status: { $in: ['ACTIVE', 'PARTIALLY_FILLED'] },
+      status: { $in: ['active', 'partial'] },
       remaining_quantity: { $gt: 0 }
     });
 
@@ -296,7 +296,7 @@ export const create_order_book_service = () => {
     if (!markets_to_warm) {
       // Get all markets with active orders
       markets_to_warm = await db.collection('orders').distinct('market_id', {
-        status: { $in: ['ACTIVE', 'PARTIALLY_FILLED'] },
+        status: { $in: ['active', 'partial'] },
         remaining_quantity: { $gt: 0 }
       }).then(ids => ids.map(id => id.toString()));
     }

@@ -77,14 +77,18 @@ async function create_indexes(): Promise<void> {
 
   // Trades collection indexes
   await db.collection(COLLECTIONS.trades).createIndex({ market_id: 1, outcome_id: 1 });
-  await db.collection(COLLECTIONS.trades).createIndex({ buy_user_id: 1 });
-  await db.collection(COLLECTIONS.trades).createIndex({ sell_user_id: 1 });
-  await db.collection(COLLECTIONS.trades).createIndex({ executed_at: -1 });
+  await db.collection(COLLECTIONS.trades).createIndex({ buyer_user_id: 1 });
+  await db.collection(COLLECTIONS.trades).createIndex({ seller_user_id: 1 });
+  await db.collection(COLLECTIONS.trades).createIndex({ buyer_order_id: 1 });
+  await db.collection(COLLECTIONS.trades).createIndex({ seller_order_id: 1 });
+  await db.collection(COLLECTIONS.trades).createIndex({ timestamp: -1 });
+  await db.collection(COLLECTIONS.trades).createIndex({ market_id: 1, timestamp: -1 });
 
   // Positions collection indexes
   await db.collection(COLLECTIONS.positions).createIndex({ user_id: 1 });
   await db.collection(COLLECTIONS.positions).createIndex({ user_id: 1, market_id: 1, outcome_id: 1 }, { unique: true });
   await db.collection(COLLECTIONS.positions).createIndex({ market_id: 1 });
+  await db.collection(COLLECTIONS.positions).createIndex({ is_settled: 1 });
 
   // Resolution proposals indexes
   await db.collection(COLLECTIONS.resolution_proposals).createIndex({ market_id: 1 });
