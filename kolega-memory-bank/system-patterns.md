@@ -79,6 +79,12 @@ Orders use lowercase status enums stored in MongoDB:
    - Auth endpoints: 5 req/min
    - Admin triggers: 5 req/min
 
+## Redis Cloud Configuration
+- Host/port parsed from `REDIS_API` env var (e.g. `redis-19972.c80.us-east-1-2.ec2.cloud.redislabs.com:19972`)
+- Password from `REDIS_PASSWORD` env var
+- Username automatically set to `default` when password is present
+- If Redis auth fails, system gracefully falls back to in-memory implementations
+
 ## Dev Server Setup
 ```bash
 # Backend

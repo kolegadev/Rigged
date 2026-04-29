@@ -15,8 +15,6 @@ export interface RedisConfig {
 
 function get_redis_connection_options(): { host: string; port: number; db: number; username?: string; password?: string; retryDelayOnFailover: number; maxRetriesPerRequest: number; enableReadyCheck: boolean; lazyConnect: boolean; retryStrategy: () => null } {
   const redis_api = process.env.REDIS_API;
-  const redis_db_name = process.env.REDIS_DATABASE_NAME;
-  const redis_account_key = process.env.REDIS_API_ACCOUNT_KEY;
 
   const base_options = {
     retryDelayOnFailover: 100,
@@ -35,25 +33,27 @@ function get_redis_connection_options(): { host: string; port: number; db: numbe
       host = parts[0];
       port = parseInt(parts[1]) || port;
     }
+    const password = process.env.REDIS_PASSWORD;
     return {
       ...base_options,
       host,
       port,
       db: parseInt(process.env.REDIS_DB || '0'),
-      // Redis Cloud: REDIS_DATABASE_NAME is the username, REDIS_API_ACCOUNT_KEY is the password
-      username: redis_db_name || undefined,
-      password: redis_account_key || process.env.REDIS_PASSWORD || undefined,
+      // Redis Cloud uses 'default' as username when password auth is enabled
+      username: password ? 'default' : undefined,
+      password,
     };
   }
 
   // Fallback to individual env vars
+  const password = process.env.REDIS_PASSWORD;
   return {
     ...base_options,
     host: process.env.REDIS_HOST || 'localhost',
     port: parseInt(process.env.REDIS_PORT || '6379'),
     db: parseInt(process.env.REDIS_DB || '0'),
-    username: redis_db_name || undefined,
-    password: redis_account_key || process.env.REDIS_PASSWORD || undefined,
+    username: password ? 'default' : undefined,
+    password,
   };
 }
 
