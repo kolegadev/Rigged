@@ -343,6 +343,17 @@ export class CacheService {
     }, undefined);
   }
 
+  async publish_auction_close(auction_id: string, data: any): Promise<void> {
+    return this.safe_redis_call(async (redis) => {
+      const channel = `auction_closes:${auction_id}`;
+      await redis.publish(channel, JSON.stringify({
+        auction_id,
+        timestamp: Date.now(),
+        ...data
+      }));
+    }, undefined);
+  }
+
   // Leaderboard using sorted sets
   async update_user_score(leaderboard: string, user_id: string, score: number): Promise<void> {
     return this.safe_redis_call(async (redis) => {

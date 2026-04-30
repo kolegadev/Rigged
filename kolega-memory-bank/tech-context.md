@@ -62,6 +62,21 @@ cd backend && npm run start     # Run compiled output
 - `GET /api/trading/reconciliation/positions` - User position reconciliation (auth required)
 - `GET /api/trading/reconciliation/orders/:order_id` - User order reconciliation (auth required)
 
+### Auction Close Detection & Evidence (Tasks 5.1–5.5)
+- `GET /api/auctions/:id/close-validation` - Close validation state with 5-check result
+- `GET /api/auctions/:id/snapshots` - List archived evidence snapshots (raw_html excluded)
+- `GET /api/auctions/:id/snapshots/:snapshotId` - Full snapshot with raw HTML for review
+- `POST /api/auctions/:id/confirm-close` - Admin manual close confirmation
+- `GET /api/auctions/:id/linked-markets` - Prediction markets tied to this auction
+
+**New Services:**
+- `auctionCloseService` (`backend/services/auction-close-service.ts`) - Extension detection, close validation, evidence archiving, linked-market lookup, admin confirm-close
+- Enhanced `bat-parser.ts` - `extractWinningBidder()`, `extractExtensionInfo()`, improved sold-price text fallbacks
+
+**Background Tasks:**
+- `start_auction_poll_checker(60000)` - Polls auctions needing attention every 60s (active, extended, near-end, recently closed awaiting confirmation, draft)
+- Integrated into graceful shutdown alongside `stop_market_status_checker`
+
 ### Health & Monitoring
 - `GET /api/health` - System health (MongoDB + Redis + WebSocket status)
 - `GET /api/health/websocket` - WebSocket connection statistics
@@ -72,7 +87,7 @@ cd backend && npm run start     # Run compiled output
 - `unsubscribe_market` - Unsubscribe from market updates
 - `subscribe_orderbook` - Subscribe to order book updates
 - `ping` / `pong` - Connection health check
-- Server emits: `market_update`, `trade_executed`, `orderbook_update`, `order_filled`, `order_placed`, `order_cancelled`
+- Server emits: `market_update`, `trade_executed`, `orderbook_update`, `order_filled`, `order_placed`, `order_cancelled`, `auction_closed`
 
 ### Frontend WebSocket Integration
 - **Context**: `frontend/src/contexts/WebSocketContext.tsx` — React context managing socket connection, subscriptions, and reactive data stores

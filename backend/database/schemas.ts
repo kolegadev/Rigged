@@ -25,6 +25,15 @@ export interface Auction {
   winning_bidder?: string;
   closed_at?: Date;
   
+  // Extension tracking (BaT extends 2 min if bid in last 2 min)
+  original_end_date?: Date;
+  extension_count?: number;
+  last_extended_at?: Date;
+  
+  // Close validation
+  close_confirmed_at?: Date;
+  close_validation_state?: 'unvalidated' | 'pending_confirmation' | 'confirmed' | 'disputed';
+  
   // Metadata
   status: 'draft' | 'active' | 'extended' | 'closed' | 'cancelled';
   created_at: Date;
@@ -41,7 +50,20 @@ export interface AuctionObservation {
   bid_count: number;
   time_left_seconds: number;
   is_extended: boolean;
-  raw_html_snapshot?: string; // Evidence for dispute resolution
+  raw_html_snapshot?: string; // Evidence for dispute resolution (truncated excerpt)
+  extension_detected?: boolean;
+  previous_end_date?: Date;
+  created_at: Date;
+}
+
+// Full HTML snapshots archived for evidence and dispute resolution
+export interface AuctionSnapshot {
+  _id?: ObjectId;
+  auction_id: ObjectId;
+  raw_html: string;
+  html_hash: string;
+  parsed_data: any;
+  snapshot_type: 'periodic' | 'close_evidence' | 'extension_evidence';
   created_at: Date;
 }
 
@@ -313,6 +335,7 @@ export interface RiskFlag {
 export const COLLECTIONS = {
   auctions: 'auctions',
   auction_observations: 'auction_observations',
+  auction_snapshots: 'auction_snapshots',
   events: 'events',
   markets: 'markets',
   outcomes: 'outcomes',

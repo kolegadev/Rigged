@@ -318,8 +318,16 @@ function extractPricing($: cheerio.CheerioAPI, warnings: string[]): AuctionPrici
     pricing.reserveStatus = 'no_reserve';
   }
   
-  // Sold price (if auction ended)
-  const soldSelectors = ['.sold-price', '.final-bid', '.winning-bid'];
+  // Sold price / final price (if auction ended) — try many BaT selectors
+  const soldSelectors = [
+    '.sold-price',
+    '.final-bid',
+    '.winning-bid',
+    '.listing-bid-value',
+    '.post-bid-value',
+    '[data-bid]',
+    '.hammer-price'
+  ];
   for (const selector of soldSelectors) {
     const soldText = $(selector).first().text();
     const soldMatch = soldText.match(/\$?([\d,]+)/);
@@ -328,8 +336,63 @@ function extractPricing($: cheerio.CheerioAPI, warnings: string[]): AuctionPrici
       break;
     }
   }
+
+  // Fallback: look for "sold for $X" or "winning bid $X" in page text
+  if (!pricing.soldPrice) {
+    const soldForMatch = pageText.match(/sold\s+for\s+\$?([\d,]+)/i);
+    if (soldForMatch) {
+      pricing.soldPrice = parseInt(soldForMatch[1].replace(/,/g, ''));
+    } else {
+      const winningBidMatch = pageText.match(/winning\s+bid\s+\$?([\d,]+)/i);
+      if (winningBidMatch) {
+        pricing.soldPrice = parseInt(winningBidMatch[1].replace(/,/g, ''));
+      }
+    }
+  }
   
   return pricing;
+}
+
+export function extractWinningBidder($: cheerio.CheerioAPI): string | null {
+  // Try multiple selectors for winning bidder display
+  const selectors = [
+    '.winning-bidder',
+    '.high-bidder',
+    '.bidder-name',
+    '.winner-name',
+    '.listing-winner a',
+    '[data-bidder]'
+  ];
+  for (const selector of selectors) {
+    const text = $(selector).first().text().trim();
+    if (text && text.length > 1) {
+      return text;
+    }
+  }
+
+  // Fallback: look for "Winner: username" pattern in text
+  const pageText = $('body').text();
+  const winnerMatch = pageText.match(/(?:winner|high bidder|sold to)[:\s]+(@?[A-Za-z0-9_\-]+)/i);
+  if (winnerMatch) {
+    return winnerMatch[1];
+  }
+
+  return null;
+}
+
+export function extractExtensionInfo($: cheerio.CheerioAPI): { isExtended: boolean; newEndTime?: Date } {
+  const pageText = $('body').text().toLowerCase();
+  const isExtended = pageText.includes('extended') || pageText.includes('extension');
+
+  // Try to find a new end time if extension is mentioned
+  if (isExtended) {
+    const endTime = extractEndTime($);
+    if (endTime) {
+      return { isExtended: true, newEndTime: endTime };
+    }
+  }
+
+  return { isExtended: false };
 }
 
 function extractEndTime($: cheerio.CheerioAPI): Date | null {
@@ -457,4 +520,6 @@ export const _internal = {
   extractEndTime,
   parseRelativeTime,
   determineStatus,
+  extractWinningBidder,
+  extractExtensionInfo,
 };

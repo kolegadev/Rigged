@@ -36,6 +36,15 @@ async function create_indexes(): Promise<void> {
   await db.collection(COLLECTIONS.auction_observations).createIndex({ auction_id: 1 });
   await db.collection(COLLECTIONS.auction_observations).createIndex({ auction_id: 1, observed_at: -1 });
 
+  // Auction snapshots indexes
+  await db.collection(COLLECTIONS.auction_snapshots).createIndex({ auction_id: 1 });
+  await db.collection(COLLECTIONS.auction_snapshots).createIndex({ auction_id: 1, snapshot_type: 1 });
+  await db.collection(COLLECTIONS.auction_snapshots).createIndex({ auction_id: 1, created_at: -1 });
+  await db.collection(COLLECTIONS.auction_snapshots).createIndex({ html_hash: 1 });
+
+  // Auction close validation indexes
+  await db.collection(COLLECTIONS.auctions).createIndex({ close_validation_state: 1 });
+
   // Events collection indexes
   await db.collection(COLLECTIONS.events).createIndex({ slug: 1 }, { unique: true });
   await db.collection(COLLECTIONS.events).createIndex({ auction_id: 1 });
@@ -150,9 +159,12 @@ export async function create_sample_data(): Promise<void> {
     reserve_status: 'no_reserve',
     start_date: new Date('2024-01-15T10:00:00Z'),
     end_date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000), // 5 days from now
+    original_end_date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
     is_live: true,
     current_bid: 85000,
     bid_count: 23,
+    extension_count: 0,
+    close_validation_state: 'unvalidated',
     status: 'active',
     created_at: new Date(),
     updated_at: new Date(),
@@ -283,6 +295,7 @@ export async function create_sample_data(): Promise<void> {
       bid_count: 20,
       time_left_seconds: 5 * 24 * 60 * 60, // 5 days
       is_extended: false,
+      extension_detected: false,
       created_at: new Date(now.getTime() - 2 * 60 * 60 * 1000)
     },
     {
@@ -292,6 +305,7 @@ export async function create_sample_data(): Promise<void> {
       bid_count: 22,
       time_left_seconds: 5 * 24 * 60 * 60 - 3600, // slightly less
       is_extended: false,
+      extension_detected: false,
       created_at: new Date(now.getTime() - 1 * 60 * 60 * 1000)
     },
     {
@@ -301,6 +315,7 @@ export async function create_sample_data(): Promise<void> {
       bid_count: 23,
       time_left_seconds: 5 * 24 * 60 * 60 - 7200, // 5 days minus 2 hours
       is_extended: false,
+      extension_detected: false,
       created_at: now
     }
   ]);

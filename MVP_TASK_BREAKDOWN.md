@@ -287,11 +287,11 @@ This document outlines all components needed to build the MVP for a Polygon-base
 **Goal**: Connect live auction close detection to market resolution
 
 ### Auction Close Detection
-- [ ] 5.1 Build auction extension tracking logic
-- [ ] 5.2 Implement final price capture
-- [ ] 5.3 Create close state validation
-- [ ] 5.4 Add evidence archiving system
-- [ ] 5.5 Build close notification system
+- [x] 5.1 Build auction extension tracking logic *Completed: detectExtension compares extracted end_time vs stored end_date with 30s skew threshold; updates extension_count, last_extended_at, status='extended'; archives extension evidence snapshots*
+- [x] 5.2 Implement final price capture *Completed: Enhanced bat-parser with soldPrice fallbacks (text regex), extractWinningBidder, extractExtensionInfo; pollAuction captures final_price, winning_bidder, closed_at on close detection*
+- [x] 5.3 Create close state validation *Completed: validateAuctionClose performs 5 checks (closed status, final price, closed_at, close evidence, observation consistency); updates close_validation_state to confirmed/pending_confirmation/disputed*
+- [x] 5.4 Add evidence archiving system *Completed: AuctionSnapshot collection with snapshot types (periodic/close_evidence/extension_evidence); SHA-256 hashed HTML stored; admin review endpoint for full HTML retrieval*
+- [x] 5.5 Build close notification system *Completed: WebSocket notify_auction_close broadcasts to auction rooms and all clients; Redis pub/sub auction_closes:* channel; linked markets lookup for downstream resolution*
 
 ### Resolution System
 - [ ] 5.6 Create resolution_proposals table

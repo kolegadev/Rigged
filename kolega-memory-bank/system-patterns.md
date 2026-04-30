@@ -65,6 +65,32 @@ Orders use lowercase status enums stored in MongoDB:
 4. Post-transaction: `position_engine.update_positions_from_trade()` updates holdings
 5. Order book cache is refreshed, Redis pub/sub events emitted, WebSocket broadcasts sent
 
+## Auction Close Detection Flow (Tasks 5.1–5.5)
+1. **Background polling** (`start_auction_poll_checker`, every 60s):
+   - `getAuctionsNeedingPoll()` queries: active/extended auctions not yet ended, auctions within 24h of ending, recently closed auctions awaiting confirmation, and draft auctions that may have gone live.
+   - `pollAllAuctionsNeedingAttention()` iterates and calls `pollAuction()` for each.
+2. **Extension detection** (`auctionCloseService.detectExtension`):
+   - Compares extracted `endTime` from BaT HTML against stored `auction.end_date`.
+   - If new end time is > current + 30s skew threshold, marks as extended.
+   - Updates `extension_count`, `last_extended_at`, `status='extended'`, and archives `extension_evidence` snapshot.
+3. **Final price capture** (enhanced `bat-parser.ts`):
+   - `extractPricing()` now includes sold-price text-regex fallbacks (`"sold for $X"`, `"winning bid $X"`).
+   - `extractWinningBidder()` parses winning bidder from HTML selectors and text patterns.
+   - `extractExtensionInfo()` detects extension language and new end times.
+   - On close detection, `updateAuctionFromExtraction()` sets `final_price`, `winning_bidder`, `closed_at`.
+4. **Close state validation** (`auctionCloseService.validateAuctionClose`):
+   - 5 checks: status==='closed', final_price present, closed_at present, close evidence snapshot archived, ≥2 observations after closed_at.
+   - Updates `close_validation_state` to `confirmed` | `pending_confirmation` | `disputed`.
+   - Sets `close_confirmed_at` when fully validated.
+5. **Evidence archiving** (`AuctionSnapshot` collection):
+   - Types: `periodic`, `close_evidence`, `extension_evidence`.
+   - Stores full raw HTML + SHA-256 `html_hash` + parsed data.
+   - Admin endpoints: `GET /api/auctions/:id/snapshots` (lists without raw_html), `GET /api/auctions/:id/snapshots/:snapshotId` (full HTML for review).
+6. **Close notification** (`WebSocketService.notify_auction_close` + Redis):
+   - `cache_service.publish_auction_close()` publishes to Redis `auction_closes:{auction_id}`.
+   - `WebSocketService.notify_auction_close()` emits `auction_closed` event to `auction:{id}` room and broadcasts to all clients.
+   - `auctionCloseService.getLinkedMarkets()` finds prediction markets tied to the auction via events for downstream resolution workflows.
+
 ## Real-time Data Flow (Tasks 4.10–4.24)
 1. Order book snapshots cached in Redis (or in-memory fallback) with 30s TTL
 2. On trade execution:

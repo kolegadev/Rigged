@@ -322,6 +322,25 @@ export class WebSocketService {
     this.broadcast_to_orderbook(market_id, outcome_id, 'orderbook_update', order_book);
   }
 
+  public notify_auction_close(auction: any, validation?: any): void {
+    const data = {
+      auction_id: auction._id?.toString() || auction.auction_id,
+      bat_id: auction.bat_id,
+      title: auction.title,
+      final_price: auction.final_price,
+      closed_at: auction.closed_at,
+      validation,
+      timestamp: Date.now()
+    };
+
+    // Broadcast to auction-specific room
+    this.io.to(`auction:${auction._id?.toString() || auction.auction_id}`).emit('auction_closed', data);
+
+    // Also broadcast to all connected clients for general awareness
+    this.broadcast_to_all('auction_closed', data);
+    this.logger.info(`📢 Broadcasted auction close: ${auction.bat_id || auction.title}`);
+  }
+
   public async shutdown(): Promise<void> {
     if (this.redis_subscriber) {
       try {

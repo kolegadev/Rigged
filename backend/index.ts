@@ -13,6 +13,7 @@ import { create_matching_test_routes } from './routes/matching_test.js';
 import { connect_to_redis, cache_service, is_redis_available } from './services/redis.js';
 import { create_websocket_service, get_websocket_service } from './services/websocket.js';
 import { start_market_status_checker, stop_market_status_checker, initialize_status_cache } from './services/market_status.js';
+import { start_auction_poll_checker, stop_auction_poll_checker } from './services/auction-service.js';
 import { rate_limiters } from './middleware/rate_limit.js';
 
 // Create Hono app
@@ -156,16 +157,21 @@ connect_to_mongodb()
     await initialize_status_cache();
     start_market_status_checker(30000);
 
+    // Start auction close detection and polling monitor (tasks 5.1–5.5)
+    start_auction_poll_checker(60000); // Poll every 60 seconds
+
     // Graceful shutdown handlers
     process.on('SIGTERM', () => {
       console.log('SIGTERM received, shutting down gracefully');
       stop_market_status_checker();
+      stop_auction_poll_checker();
       process.exit(0);
     });
 
     process.on('SIGINT', () => {
       console.log('SIGINT received, shutting down gracefully');
       stop_market_status_checker();
+      stop_auction_poll_checker();
       process.exit(0);
     });
 
