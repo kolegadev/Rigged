@@ -234,7 +234,7 @@ This document outlines all components needed to build the MVP for a Polygon-base
 
 ---
 
-## Sprint 4 - Matching Engine and Live Market Data
+## Sprint 4 - Matching Engine and Live Market Data ✅ **COMPLETED**
 **Goal**: Make trading actually work with real matching
 
 ### Matching Engine Core ✅
@@ -272,12 +272,14 @@ This document outlines all components needed to build the MVP for a Polygon-base
 - [x] 4.24 Create trade execution feedback *Completed: `TradeToast` floating notifications for `order_filled` WebSocket events with quantity, price, remaining*
 
 ### APIs - Trading Engine
-- [ ] 4.25 GET /v1/markets/:marketId/book endpoint
-- [ ] 4.26 GET /v1/markets/:marketId/trades endpoint
-- [ ] 4.27 GET /v1/me/positions endpoint
-- [ ] 4.28 GET /v1/me/orders endpoint
-- [ ] 4.29 GET /v1/me/trades endpoint
-- [ ] 4.30 Websocket channels implementation
+- [x] 4.25 GET /v1/markets/:marketId/book endpoint *Completed: `/api/trading/orderbook/:market_id/:outcome_id` and `/api/trading/orderbook/:market_id` provide full book snapshots*
+- [x] 4.26 GET /v1/markets/:marketId/trades endpoint *Completed: `/api/trading/trades/:market_id` with optional outcome_id and limit filters*
+- [x] 4.27 GET /v1/me/positions endpoint *Completed: `/api/trading/positions` returns user open positions; `/api/trading/position-summary` adds P&L enrichment*
+- [x] 4.28 GET /v1/me/orders endpoint *Completed: Existing `/api/auth/orders` returns user order history*
+- [x] 4.29 GET /v1/me/trades endpoint *Completed: `/api/trading/my-trades` returns authenticated user's trade history with market_id filter*
+- [x] 4.30 Websocket channels implementation *Completed: Socket.IO channels for `subscribe_market`, `subscribe_orderbook`, `authenticate`, `ping/pong`; server emits `market_update`, `trade_executed`, `orderbook_update`, `order_filled`, `order_placed`, `order_cancelled`*
+
+**SPRINT 4 COMPLETED**: All 30/30 tasks implemented (100% completion). Delivered full matching engine with price-time priority, atomic trade execution, position tracking with P&L, Redis-backed order book caching, real-time WebSocket feeds, comprehensive trading UI components (order book, trade history, positions, price tickers, trade toasts), and complete REST API coverage for trading data.
 
 ---
 
