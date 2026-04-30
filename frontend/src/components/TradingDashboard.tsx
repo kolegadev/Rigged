@@ -1,6 +1,11 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { AlertTriangle, DollarSign, TrendingUp, User, LogOut, RefreshCw, Activity, Radio, BookOpen, BarChart3 } from 'lucide-react';
+import { AlertTriangle, DollarSign, TrendingUp, User, LogOut, RefreshCw, Radio, BarChart3 } from 'lucide-react';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
+import { OrderBook } from './OrderBook';
+import { TradeHistory } from './TradeHistory';
+import { PositionsPanel } from './PositionsPanel';
+import { PriceTicker } from './PriceTicker';
+import { TradeToast } from './TradeToast';
 
 // ─────────────────────────────────────────────────────────────
 // TYPES & INTERFACES
@@ -346,103 +351,6 @@ const ConnectionStatus: React.FC = () => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// COMPONENTS: Live Trade Feed
-// ─────────────────────────────────────────────────────────────
-
-const LiveTradeFeed: React.FC<{ marketId: string }> = ({ marketId }) => {
-  const { trades } = useWebSocketContext();
-  const marketTrades = trades.filter(t => t.market_id === marketId);
-
-  if (marketTrades.length === 0) {
-    return (
-      <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Activity className="w-4 h-4 text-purple-400" />
-          <h3 className="text-sm font-semibold text-white">Live Trades</h3>
-        </div>
-        <p className="text-gray-400 text-xs text-center py-4">Waiting for trades...</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <Activity className="w-4 h-4 text-purple-400" />
-        <h3 className="text-sm font-semibold text-white">Live Trades</h3>
-        <span className="text-xs text-gray-400 ml-auto">{marketTrades.length} recent</span>
-      </div>
-      <div className="space-y-1.5 max-h-48 overflow-y-auto">
-        {marketTrades.slice(0, 10).map((trade, idx) => (
-          <div key={idx} className="flex items-center justify-between text-xs py-1 border-b border-white/5 last:border-0">
-            <div className="flex items-center gap-2">
-              <span className="text-gray-400">
-                {new Date(trade.timestamp).toLocaleTimeString()}
-              </span>
-              <span className="text-white font-mono">${trade.price.toFixed(2)}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-300">{trade.quantity} shares</span>
-              <span className="text-emerald-400">@${(trade.price * trade.quantity).toFixed(2)}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-// ─────────────────────────────────────────────────────────────
-// COMPONENTS: Live Order Book Preview
-// ─────────────────────────────────────────────────────────────
-
-const LiveOrderBookPreview: React.FC<{ marketId: string; outcomeId: string; outcomeTitle: string }> = ({
-  marketId, outcomeId, outcomeTitle
-}) => {
-  const { orderBooks } = useWebSocketContext();
-  const book = orderBooks.get(`${marketId}:${outcomeId}`);
-
-  return (
-    <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <BookOpen className="w-4 h-4 text-blue-400" />
-        <h3 className="text-sm font-semibold text-white">{outcomeTitle} Book</h3>
-      </div>
-      {!book ? (
-        <p className="text-gray-400 text-xs text-center py-4">No orders yet</p>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 text-xs">
-          <div>
-            <div className="text-emerald-400 font-semibold mb-1.5">BIDS</div>
-            <div className="space-y-1">
-              {book.bids.slice(0, 5).map((level, idx) => (
-                <div key={idx} className="flex justify-between font-mono">
-                  <span className="text-white">${level.price.toFixed(2)}</span>
-                  <span className="text-gray-400">{level.size}</span>
-                </div>
-              ))}
-              {book.bids.length === 0 && <span className="text-gray-500">-</span>}
-            </div>
-          </div>
-          <div>
-            <div className="text-red-400 font-semibold mb-1.5">ASKS</div>
-            <div className="space-y-1">
-              {book.asks.slice(0, 5).map((level, idx) => (
-                <div key={idx} className="flex justify-between font-mono">
-                  <span className="text-white">${level.price.toFixed(2)}</span>
-                  <span className="text-gray-400">{level.size}</span>
-                </div>
-              ))}
-              {book.asks.length === 0 && <span className="text-gray-500">-</span>}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ─────────────────────────────────────────────────────────────
 // COMPONENTS: Market Selector
 // ─────────────────────────────────────────────────────────────
 
@@ -480,12 +388,19 @@ interface OrderFormProps {
   marketId: string;
   marketTitle: string;
   outcomes?: Array<{ _id: string; title: string; slug: string }>;
+  presetPrice?: number;
 }
 
-export const OrderForm: React.FC<OrderFormProps> = ({ marketId, marketTitle, outcomes }) => {
+export const OrderForm: React.FC<OrderFormProps> = ({ marketId, marketTitle, outcomes, presetPrice }) => {
   const { token } = useAuth();
   const [outcome, setOutcome] = useState<'yes' | 'no'>('yes');
   const [price, setPrice] = useState(0.50);
+
+  useEffect(() => {
+    if (presetPrice !== undefined && presetPrice >= 0.01 && presetPrice <= 0.99) {
+      setPrice(presetPrice);
+    }
+  }, [presetPrice]);
   const [quantity, setQuantity] = useState(10);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -755,11 +670,12 @@ export const OrdersList: React.FC = () => {
 // ─────────────────────────────────────────────────────────────
 
 export const TradingDashboard: React.FC = () => {
-  const { user, logout, isLoading } = useAuth();
+  const { user, token, logout, isLoading } = useAuth();
   const { connected, subscribeMarket, unsubscribeMarket, subscribeOrderBook, marketStatuses } = useWebSocketContext();
   const [markets, setMarkets] = useState<Market[]>([]);
   const [selectedMarketId, setSelectedMarketId] = useState<string | null>(null);
   const [marketsLoading, setMarketsLoading] = useState(true);
+  const [orderPrice, setOrderPrice] = useState<number | undefined>(undefined);
 
   // Fetch real markets from API
   useEffect(() => {
@@ -859,7 +775,7 @@ export const TradingDashboard: React.FC = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Left Column: Balance, Market Selector, Orders, Live Feed */}
+            {/* Left Column: Balance, Market Selector, Positions, Orders */}
             <div className="space-y-6">
               <BalanceDisplay />
               <MarketSelector
@@ -867,11 +783,17 @@ export const TradingDashboard: React.FC = () => {
                 selectedId={selectedMarketId}
                 onSelect={setSelectedMarketId}
               />
+              {selectedMarketId && (
+                <PositionsPanel
+                  marketId={selectedMarketId}
+                  outcomes={selectedMarket?.outcomes}
+                  token={token}
+                />
+              )}
               <OrdersList />
-              {selectedMarketId && <LiveTradeFeed marketId={selectedMarketId} />}
             </div>
 
-            {/* Right Column: Trading Form & Live Data */}
+            {/* Right Column: Market Info, Price Tickers, Order Form, Order Books, Trade History */}
             <div className="lg:col-span-2 space-y-6">
               {selectedMarket && (
                 <>
@@ -903,17 +825,31 @@ export const TradingDashboard: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Price Tickers */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {selectedMarket.outcomes?.map(outcome => (
+                      <PriceTicker
+                        key={outcome._id}
+                        marketId={selectedMarket._id}
+                        outcomeId={outcome._id}
+                        outcomeTitle={outcome.title}
+                        onPriceSelect={setOrderPrice}
+                      />
+                    ))}
+                  </div>
+
                   {/* Order Form */}
                   <OrderForm
                     marketId={selectedMarket._id}
                     marketTitle={selectedMarket.title}
                     outcomes={selectedMarket.outcomes}
+                    presetPrice={orderPrice}
                   />
 
-                  {/* Live Order Book Previews */}
+                  {/* Order Books */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {selectedMarket.outcomes?.map(outcome => (
-                      <LiveOrderBookPreview
+                      <OrderBook
                         key={outcome._id}
                         marketId={selectedMarket._id}
                         outcomeId={outcome._id}
@@ -921,19 +857,29 @@ export const TradingDashboard: React.FC = () => {
                       />
                     ))}
                   </div>
+
+                  {/* Trade History */}
+                  <TradeHistory
+                    marketId={selectedMarket._id}
+                    outcomes={selectedMarket.outcomes}
+                    token={token}
+                    userId={user?.id}
+                  />
                 </>
               )}
             </div>
           </div>
         )}
 
-        {/* Demo Notice */}
+        <TradeToast />
+
+        {/* Footer Note */}
         <div className="mt-8 bg-blue-500/20 border border-blue-500/30 rounded-lg p-4">
           <div className="flex items-start gap-3">
             <AlertTriangle className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
             <div className="text-blue-200 text-sm">
               <p className="font-medium mb-1">Real-time Market Data</p>
-              <p>You're connected to live WebSocket feeds. Order book, trade executions, and market status updates stream in real-time. This is tasks 4.15–4.19 implementation.</p>
+              <p>Live order books, trade history, position tracking, price tickers, and execution feedback are now active. Tasks 4.20–4.24 complete.</p>
             </div>
           </div>
         </div>

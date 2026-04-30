@@ -265,11 +265,11 @@ This document outlines all components needed to build the MVP for a Polygon-base
 - [x] 4.19 Create market status updates *Completed: Auto-transition published→trading and trading→resolved based on time; admin publish/unpublish broadcasts status changes; periodic 30s checker*
 
 ### Trading UI Components
-- [ ] 4.20 Build order book display component
-- [ ] 4.21 Create trade history component
-- [ ] 4.22 Implement position display
-- [ ] 4.23 Add real-time price updates
-- [ ] 4.24 Create trade execution feedback
+- [x] 4.20 Build order book display component *Completed: `OrderBook` component with depth bars, spread/mid display, last price, bid/ask footer stats*
+- [x] 4.21 Create trade history component *Completed: `TradeHistory` with Market Trades + My Trades tabs, REST + WebSocket merged feed*
+- [x] 4.22 Implement position display *Completed: `PositionsPanel` with unrealized/realized P&L, long/short badges, avg price, market value*
+- [x] 4.23 Add real-time price updates *Completed: `PriceTicker` per outcome showing last price, bid/ask/spread/mid with one-click order price fill*
+- [x] 4.24 Create trade execution feedback *Completed: `TradeToast` floating notifications for `order_filled` WebSocket events with quantity, price, remaining*
 
 ### APIs - Trading Engine
 - [ ] 4.25 GET /v1/markets/:marketId/book endpoint

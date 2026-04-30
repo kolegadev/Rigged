@@ -65,7 +65,7 @@ Orders use lowercase status enums stored in MongoDB:
 4. Post-transaction: `position_engine.update_positions_from_trade()` updates holdings
 5. Order book cache is refreshed, Redis pub/sub events emitted, WebSocket broadcasts sent
 
-## Real-time Data Flow (Tasks 4.10–4.19)
+## Real-time Data Flow (Tasks 4.10–4.24)
 1. Order book snapshots cached in Redis (or in-memory fallback) with 30s TTL
 2. On trade execution:
    - `cache_service.publish_trade_execution()` sends to Redis `trades:{market_id}:{outcome_id}` channel
@@ -85,15 +85,35 @@ Orders use lowercase status enums stored in MongoDB:
 6. Frontend WebSocket client (`frontend/src/contexts/WebSocketContext.tsx`):
    - Connects via `socket.io-client` with auto-reconnection
    - Authenticates with JWT token from localStorage
-   - Subscribes to `trade_executed`, `orderbook_update`, `market_update` events
-   - Maintains reactive state maps for trades, order books, and market statuses
-   - `TradingDashboard` displays live trade feed, order book preview, and connection status
+   - Subscribes to `trade_executed`, `orderbook_update`, `market_update`, `order_filled` events
+   - Maintains reactive state maps for trades, order books, market statuses, last prices, and order fills
+   - `TradingDashboard` displays live order books, trade history, positions, price tickers, and trade toasts
 7. Rate limiting applied via `CacheService.check_rate_limit()` using Redis sorted sets (or in-memory fallback counters)
    - Standard API: 100 req/min
    - Market data: 300 req/min
    - Order placement: 10 req/min
    - Auth endpoints: 5 req/min
    - Admin triggers: 5 req/min
+
+## Trading UI Components (Tasks 4.20–4.24)
+- **`OrderBook`** (`frontend/src/components/OrderBook.tsx`) - Visual depth-bar order book per outcome with spread, mid-price, last trade price, and bid/ask footer stats. Consumes `orderBooks` and `lastPrices` from WebSocketContext.
+- **`TradeHistory`** (`frontend/src/components/TradeHistory.tsx`) - Tabbed trade feed (Market Trades + My Trades). Market trades merge REST historical data (`/api/trading/trades/:market_id`) with live WebSocket `trade_executed` events. My Trades fetch from `/api/trading/my-trades`.
+- **`PositionsPanel`** (`frontend/src/components/PositionsPanel.tsx`) - Displays open positions with unrealized/realized P&L, long/short badges, average price, current market price, and market value. Fetches from `/api/trading/position-summary`.
+- **`PriceTicker`** (`frontend/src/components/PriceTicker.tsx`) - Per-outcome real-time price ticker showing last trade price, best bid, best ask, spread, and mid-price. Fetches BBO from `/api/trading/bbo/:market_id/:outcome_id` and updates via WebSocket `price_update`. Includes "Use for order" buttons to auto-fill the order form price.
+- **`TradeToast`** (`frontend/src/components/TradeToast.tsx`) - Floating toast notifications for `order_filled` WebSocket events. Shows fill quantity, price, and remaining amount. Auto-dismisses after 5 seconds.
+
+## Trading Dashboard Layout
+```
+┌─────────────────┬─────────────────────────────────────────────┐
+│  Left Column    │  Right Column (lg:col-span-2)               │
+│  ─────────────  │  ─────────────────────────────────────────  │
+│  BalanceDisplay │  Market Info Card (title, status, type)     │
+│  MarketSelector │  PriceTicker row (per outcome)              │
+│  PositionsPanel │  OrderForm (YES/NO, slider, presetPrice)    │
+│  OrdersList     │  OrderBook grid (per outcome)               │
+│                 │  TradeHistory (Market + My Trades tabs)     │
+└─────────────────┴─────────────────────────────────────────────┘
+```
 
 ## Redis Cloud Configuration
 - Host/port parsed from `REDIS_API` env var (e.g. `redis-19972.c80.us-east-1-2.ec2.cloud.redislabs.com:19972`)

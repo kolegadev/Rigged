@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:9002';
@@ -29,12 +29,39 @@ export interface MarketStatusEvent {
   reason: string;
 }
 
+export interface PriceUpdateEvent {
+  best_bid?: number;
+  best_ask?: number;
+  mid_price?: number;
+  spread?: number;
+  outcome_id: string;
+}
+
+export interface OrderFillEvent {
+  order_id: string;
+  fill_quantity: number;
+  fill_price: number;
+  remaining_quantity: number;
+  timestamp: number;
+}
+
+export interface LastPriceData {
+  last_trade_price?: number;
+  best_bid?: number;
+  best_ask?: number;
+  mid_price?: number;
+  spread?: number;
+  timestamp: number;
+}
+
 interface WebSocketContextValue {
   connected: boolean;
   authenticated: boolean;
   trades: TradeEvent[];
   orderBooks: Map<string, OrderBookEvent>;
   marketStatuses: Map<string, MarketStatusEvent>;
+  lastPrices: Map<string, LastPriceData>;
+  orderFills: OrderFillEvent[];
   subscribeMarket: (marketId: string) => void;
   unsubscribeMarket: (marketId: string) => void;
   subscribeOrderBook: (marketId: string, outcomeId: string) => void;
@@ -43,6 +70,7 @@ interface WebSocketContextValue {
 const WebSocketContext = createContext<WebSocketContextValue | null>(null);
 
 const MAX_TRADES = 50;
+const MAX_FILLS = 20;
 
 export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const socketRef = useRef<Socket | null>(null);
@@ -51,6 +79,8 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [trades, setTrades] = useState<TradeEvent[]>([]);
   const [orderBooks, setOrderBooks] = useState<Map<string, OrderBookEvent>>(new Map());
   const [marketStatuses, setMarketStatuses] = useState<Map<string, MarketStatusEvent>>(new Map());
+  const [lastPrices, setLastPrices] = useState<Map<string, LastPriceData>>(new Map());
+  const [orderFills, setOrderFills] = useState<OrderFillEvent[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem('auth_token');
@@ -83,6 +113,17 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     socket.on('trade_executed', (data: TradeEvent) => {
       setTrades(prev => [data, ...prev].slice(0, MAX_TRADES));
+      setLastPrices(prev => {
+        const key = `${data.market_id}:${data.outcome_id}`;
+        const existing = prev.get(key);
+        const next = new Map(prev);
+        next.set(key, {
+          ...existing,
+          last_trade_price: data.price,
+          timestamp: data.timestamp
+        });
+        return next;
+      });
     });
 
     socket.on('orderbook_update', (data: OrderBookEvent) => {
@@ -106,7 +147,32 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           });
           return next;
         });
+      } else if (data.type === 'price_update') {
+        const payload: PriceUpdateEvent = data.data;
+        if (payload) {
+          setLastPrices(prev => {
+            const key = `${data.market_id}:${payload.outcome_id}`;
+            const existing = prev.get(key);
+            const next = new Map(prev);
+            next.set(key, {
+              ...existing,
+              best_bid: payload.best_bid ?? existing?.best_bid,
+              best_ask: payload.best_ask ?? existing?.best_ask,
+              mid_price: payload.mid_price ?? existing?.mid_price,
+              spread: payload.spread ?? existing?.spread,
+              timestamp: data.timestamp || Date.now()
+            });
+            return next;
+          });
+        }
       }
+    });
+
+    socket.on('order_filled', (data: Omit<OrderFillEvent, 'timestamp'>) => {
+      setOrderFills(prev => [
+        { ...data, timestamp: Date.now() },
+        ...prev
+      ].slice(0, MAX_FILLS));
     });
 
     return () => {
@@ -134,6 +200,8 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       trades,
       orderBooks,
       marketStatuses,
+      lastPrices,
+      orderFills,
       subscribeMarket,
       unsubscribeMarket,
       subscribeOrderBook

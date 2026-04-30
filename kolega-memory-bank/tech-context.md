@@ -47,6 +47,10 @@ cd backend && npm run start     # Run compiled output
 - `GET /api/trading/bbo/:market_id/:outcome_id` - Best bid/offer (rate limited: 300/min)
 - `GET /api/trading/trades/:market_id` - Market trade history (rate limited: 300/min)
 - `GET /api/trading/recent-trades/:market_id/:outcome_id` - Recent trades for display (rate limited: 300/min)
+- `GET /api/trading/my-trades` - User's personal trade history (auth required)
+- `GET /api/trading/positions` - User's open positions (auth required)
+- `GET /api/trading/position-summary` - User's position summary with P&L (auth required)
+- `GET /api/trading/statistics/:market_id` - Trade statistics for a market
 - `POST /api/trading/trigger-matching/:market_id/:outcome_id` - Admin match trigger (rate limited: 5/min)
 - `POST /api/trading/trigger-all-matching` - Trigger all markets (rate limited: 5/min)
 
@@ -72,5 +76,15 @@ cd backend && npm run start     # Run compiled output
 
 ### Frontend WebSocket Integration
 - **Context**: `frontend/src/contexts/WebSocketContext.tsx` — React context managing socket connection, subscriptions, and reactive data stores
+  - State: `connected`, `authenticated`, `trades`, `orderBooks`, `marketStatuses`, `lastPrices`, `orderFills`
+  - Events handled: `trade_executed`, `orderbook_update`, `market_update` (status & price), `order_filled`
+  - Bug fix: Added missing `useRef` import for `socketRef`
 - **Hook**: `frontend/src/hooks/useWebSocket.ts` — Lower-level hook for direct socket access
-- **Features**: Auto-reconnection, JWT auth, live trade feed, order book streaming, market status updates
+- **Features**: Auto-reconnection, JWT auth, live trade feed, order book streaming, market status updates, price tickers, order fill toasts
+
+### Frontend Trading Components
+- `OrderBook` — Depth-bar order book with spread/mid/last price
+- `TradeHistory` — Tabbed market trades (REST + WS) and personal trade history
+- `PositionsPanel` — Open positions with P&L, long/short badges, market value
+- `PriceTicker` — Per-outcome BBO ticker with one-click order price fill
+- `TradeToast` — Floating toast notifications for order fills
